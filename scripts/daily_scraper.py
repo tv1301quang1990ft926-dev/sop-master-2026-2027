@@ -6,10 +6,10 @@ from supabase import create_client, Client
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def scrape_real_matches_today():
-    print("🚀 Bắt đầu cào dữ liệu trận đấu THẬT hôm nay từ cổng Live...")
+def main():
+    print("🚀 [SOP Master] Khởi chạy cào dữ liệu trận đấu hôm nay...")
     if not SUPABASE_URL or not SUPABASE_KEY:
-        print("❌ Thiếu SUPABASE_URL hoặc SUPABASE_KEY trong môi trường!")
+        print("❌ Thiếu biến môi trường SUPABASE_URL hoặc SUPABASE_KEY!")
         return
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -19,40 +19,37 @@ def scrape_real_matches_today():
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
     }
     
-    # Endpoint API cào danh sách trận đấu thật trong ngày
+    # Cổng cào lịch thi đấu trận thật hôm nay
     url = f"[suspicious link removed]{today_str}"
     
     try:
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code != 200:
-            print(f"❌ Cổng dữ liệu phản hồi mã {response.status_code}")
+        res = requests.get(url, headers=headers, timeout=15)
+        if res.status_code != 200:
+            print(f"⚠️ Cổng phản hồi mã {res.status_code}")
             return
 
-        data = response.json()
-        events = data.get("events", [])
-        print(f"📊 Tìm thấy {len(events)} trận đấu thật trong ngày {today_str}.")
+        events = res.json().get("events", [])
+        print(f"📊 Tìm thấy {len(events)} trận đấu trong ngày {today_str}.")
 
         saved_count = 0
         for event in events:
-            tournament = event.get("tournament", {}).get("name", "League")
-            category = event.get("tournament", {}).get("category", {}).get("name", "")
+            home = event.get("homeTeam", {}).get("name")
+            away = event.get("awayTeam", {}).get("name")
+            start_ts = event.get("startTimestamp")
+            tournament = event.get("tournament", {}).get("name", "Football League")
             
-            home_team = event.get("homeTeam", {}).get("name")
-            away_team = event.get("awayTeam", {}).get("name")
-            start_timestamp = event.get("startTimestamp")
-            
-            if not home_team or not away_team or not start_timestamp:
+            if not home or not away or not start_ts:
                 continue
 
             match_id = f"{today_str}_{event.get('id')}"
-            match_date = datetime.utcfromtimestamp(start_timestamp).isoformat() + "Z"
+            match_date = datetime.utcfromtimestamp(start_ts).isoformat() + "Z"
             
-            payload = {
+            baseline_payload = {
                 "match_id": match_id,
                 "match_date": match_date,
-                "league_name": f"{category} - {tournament}",
-                "home_team": home_team,
-                "away_team": away_team,
+                "league_name": tournament,
+                "home_team": home,
+                "away_team": away,
                 "xg_home_baseline": 1.50,
                 "xg_away_baseline": 1.20,
                 "handicap_opening": -0.5,
@@ -61,17 +58,18 @@ def scrape_real_matches_today():
                 "status": "PENDING"
             }
 
-            # Nạp trận thật vào CSDL Supabase
+            # Gọi RPC rpc_save_baseline_scan lưu vào bảng sop_master_baseline_scans
             supabase.rpc("rpc_save_baseline_scan", {
                 "p_match_id": match_id,
-                "p_baseline_data": payload
+                "p_baseline_data": baseline_payload
             }).execute()
+            
             saved_count += 1
 
-        print(f"✅ Đã nạp thành công {saved_count} trận đấu THẬT vào Supabase!")
+        print(f"✅ Đã nạp thành công {saved_count} trận thật vào Supabase!")
 
     except Exception as e:
-        print(f"❌ Sự cố cào dữ liệu: {e}")
+        print(f"❌ Lỗi cào dữ liệu: {e}")
 
 if __name__ == "__main__":
-    scrape_real_matches_today()
+    main()
