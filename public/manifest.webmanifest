@@ -1,0 +1,19 @@
+{
+  "name": "SOP Master 2026-2027",
+  "short_name": "SOP Master",
+  "description": "Browse the SOP Master 2026-2027 static club directory.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
