@@ -16,7 +16,7 @@ export default function H2HModal({ match, onClose }: H2HModalProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const history = match.h2h_history ?? [];
+  const history = match.baseline_payload?.h2h_history ?? [];
 
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4" onClick={onClose}>

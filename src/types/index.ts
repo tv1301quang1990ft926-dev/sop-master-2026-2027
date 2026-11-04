@@ -28,18 +28,20 @@ export interface H2HEntry {
   away_score: number;
 }
 
+export interface BaselinePayload {
+  xg_home_baseline: number | null;
+  xg_away_baseline: number | null;
+  handicap_opening: number | null;
+  odds_home_opening: number | null;
+  odds_away_opening: number | null;
+  h2h_history?: H2HEntry[] | null;
+}
+
 export interface BaselineMatch {
   match_id: string;
+  match_date: string;
   league_name: string;
-  kickoff_at: string;
   home_team: string;
   away_team: string;
-  opening_spread: number | null;
-  opening_total: number | null;
-  poisson_home_win_pct: number | null;
-  poisson_draw_pct: number | null;
-  poisson_away_win_pct: number | null;
-  baseline_xg_home: number | null;
-  baseline_xg_away: number | null;
-  h2h_history: H2HEntry[] | null;
+  baseline_payload: BaselinePayload | null;
 }

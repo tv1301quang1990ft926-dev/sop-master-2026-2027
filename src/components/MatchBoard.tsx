@@ -71,9 +71,16 @@ export default function MatchBoard() {
       )}
 
       {status === 'ready' && matches.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-          <p className="text-base font-semibold text-slate-900">⚽ Chưa có trận đấu nào hôm nay</p>
-          <p className="mt-1 text-sm text-slate-600">Hệ thống đang chờ cào dữ liệu</p>
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <p className="text-base font-semibold text-slate-900">Chưa có trận đấu cho ngày hôm nay</p>
+          <button
+            type="button"
+            onClick={loadMatches}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50"
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Làm Mới
+          </button>
         </div>
       )}
 
