@@ -13,7 +13,6 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# B5 Lớp 2: Danh sách User-Agent & TLS Fingerprints thực tế (Chrome 128 / Safari)
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
@@ -32,15 +31,9 @@ def send_telegram_alert(message: str):
 
 def fetch_with_b5_shield(target_url: str, max_retries: int = 2):
     """
-    HÀM CÀO DỮ LIỆU BỌC BỘ BỨC TƯỜNG B5 ANTI-BOT SHIELD:
-    - Lớp 1: Proxy Relay
-    - Lớp 2: TLS/User-Agent Impersonation
-    - Lớp 3: Random Delay Jitter (3.5s - 7.2s)
-    - Lớp 4: Fetch JSON/Thô
-    - Lớp 5: Immediate Halt & Failover Notification
+    HÀM CÀO DỮ LIỆU BỌC BỘ BỨC TƯỜNG B5 ANTI-BOT SHIELD
     """
     for attempt in range(1, max_retries + 1):
-        # B5 Lớp 3: Random Delay Jitter (Nghỉ ngẫu nhiên 3.5s - 7.2s giả lập người thật)
         delay = random.uniform(3.5, 7.2)
         print(f"⏳ [B5 Shield] Chờ ngẫu nhiên {delay:.2f}s trước khi gửi request (Lần thử {attempt}/{max_retries})...")
         time.sleep(delay)
@@ -58,12 +51,11 @@ def fetch_with_b5_shield(target_url: str, max_retries: int = 2):
             if response.status_code == 200:
                 print("✅ [B5 Shield] Trích xuất dữ liệu thành công qua khiên bảo vệ!")
                 return response.json() if "json" in response.headers.get("Content-Type", "") else response.text
-            elif response.status_code in :
+            elif response.status_code in [403, 429]:
                 print(f"⚠️ [B5 Shield] Phát hiện phản hồi bị chặn (HTTP {response.status_code})!")
         except Exception as e:
             print(f"❌ [B5 Shield] Lỗi kết nối: {e}")
 
-    # B5 Lớp 5: DỪNG NGẦM TỨC THÌ (IMMEDIATE HALT) & BẮN CẢNH BÁO TELEGRAM
     error_msg = f"🚨 *[CẢNH BÁO CHẶN BOT - B5 SHIELD HALT]*\n\nCổng dữ liệu `{target_url}` bị khóa IP/Cloudflare.\nHệ thống đã DỪNG NGẦM TỨC THÌ để bảo vệ an toàn IP máy chủ!"
     print(error_msg)
     send_telegram_alert(error_msg)
@@ -76,10 +68,13 @@ def run_daily_baseline_scraper():
         print("❌ Thiếu cấu hình SUPABASE_URL hoặc SUPABASE_KEY!")
         return
 
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("✅ Kết nối Supabase CSDL sẵn sàng.")
+    try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print("✅ Kết nối Supabase CSDL sẵn sàng.")
+    except Exception as e:
+        print(f"❌ Lỗi khởi tạo Supabase: {e}")
+        return
     
-    # Kịch bản kiểm tra an toàn: Chưa có trận đấu -> Thông báo minh bạch
     print("🛡️ Hệ thống an toàn 100%, không bị lưu IP, sẵn sàng cào dữ liệu khi có lịch trận.")
 
 if __name__ == "__main__":
