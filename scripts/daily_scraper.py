@@ -2,22 +2,29 @@ import os
 import sys
 import json
 import time
+import random
 import logging
 import requests
 from datetime import datetime
 from supabase import create_client, Client
 
-# Khởi tạo Logger chuẩn để GitHub Actions in chi tiết từng dòng log
+# Lớp 2: Thử import curl_cffi để giả mạo vân tay TLS/JA3 Chrome 128
+try:
+    from curl_cffi import requests as stealth_requests
+    HAS_CURL_CFFI = True
+except ImportError:
+    import requests as stealth_requests
+    HAS_CURL_CFFI = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-class StealthScraperEngine:
+class B5StealthScraperEngine:
     def __init__(self, supabase_url: str, supabase_key: str):
-        self.max_retries = 3
-        self.retry_delay_sec = 2
+        self.max_retries = 2
         self.supabase_url = supabase_url
         self.supabase_key = supabase_key
         
@@ -28,68 +35,129 @@ class StealthScraperEngine:
             logging.error(f"❌ Không thể kết nối Supabase Client: {e}")
             sys.exit(1)
 
-    def log_system_error(self, error_code: str, match_id: str, log_details: dict):
-        """Ghi nhận lỗi kỹ thuật vào Stored Procedure rpc_log_system_error trên Supabase"""
-        logging.error(f"[SYSTEM_ERROR {error_code}] Match: {match_id} | Details: {log_details}")
-        try:
-            self.supabase.rpc("rpc_log_system_error", {
-                "p_error_code": error_code,
-                "p_match_id": match_id or "N/A",
-                "p_log_details": log_details
-            }).execute()
-        except Exception as e:
-            logging.warning(f"⚠️ Không thể lưu log_system_error vào Supabase: {e}")
+    def apply_random_jitter(self):
+        """Lớp 3: Random Delay Jitter (3.5s - 7.2s) giả lập người dùng thật"""
+        delay = round(random.uniform(3.5, 7.2), 2)
+        logging.info(f"⏳ [B5 Jitter] Tạm dừng ngẫu nhiên {delay}s...")
+        time.sleep(delay)
 
-    def fetch_real_matches_today(self) -> list:
-        """Cào danh sách trận đấu thực tế trong ngày hôm nay"""
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    def log_system_error(self, error_code: str, match_id: str, log_details: dict):
+        """Lớp 5: Immediate Halt Logging vào CSDL Supabase"""
+        logging.error(f"[SYSTEM_ERROR {error_code}] Match: {match_id} | Details: {log_details}")
+        payload = {
+            "p_error_code": error_code,
+            "p_match_id": match_id or "N/A",
+            "p_log_details": log_details
+        }
+        try:
+            self.supabase.rpc("rpc_log_system_error", payload).execute()
+        except Exception:
+            try:
+                self.supabase.table("system_logs").insert({
+                    "error_code": error_code,
+                    "match_id": match_id or "N/A",
+                    "log_details": log_details
+                }).execute()
+            except Exception:
+                logging.warning("⚠️ Chưa khởi tạo bảng system_logs trên Supabase, bỏ qua log_error.")
+
+    def fetch_sofascore_events(self, today_str: str) -> list:
+        """Cổng 1 (Sofascore API thô) + B5 TLS Impersonation"""
+        url = f"[suspicious link removed]{today_str}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
             "Referer": "[suspicious link removed]"
         }
-        
-        domain_host = "api.sofascore.com"
-        url = f"https://{domain_host}/api/v1/sport/football/scheduled-events/{today_str}"
-        logging.info(f"🌐 Đang gọi API cào trận thật: {url}")
+        logging.info(f"🌐 [Cổng 1 - Sofascore] Đang quét endpoint: {url} (curl_cffi={HAS_CURL_CFFI})")
 
-        events = []
         for attempt in range(1, self.max_retries + 1):
             try:
-                res = requests.get(url, headers=headers, timeout=15)
+                if HAS_CURL_CFFI:
+                    res = stealth_requests.get(url, headers=headers, impersonate="chrome120", timeout=12)
+                else:
+                    res = requests.get(url, headers=headers, timeout=12)
+
+                if res.status_code == 200:
+                    events = res.json().get("events", [])
+                    logging.info(f"📊 [Sofascore B5 Success] Lấy thành công {len(events)} trận đấu.")
+                    return events
+                else:
+                    logging.warning(f"⚠️ [Sofascore B5] Lần {attempt}/{self.max_retries} bị chặn mã {res.status_code}")
+                    self.apply_random_jitter()
+            except Exception as e:
+                logging.warning(f"⚠️ [Sofascore B5] Lần {attempt}/{self.max_retries} lỗi: {e}")
+                self.apply_random_jitter()
+
+        return []
+
+    def fetch_espn_failover_events(self, today_str_nodash: str) -> list:
+        """Lớp 1 & 5: Failover Gate (Cổng 2 dự phòng ESPN Public API - Không bị chặn IP Datacenter)"""
+        top_leagues = ["eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "uefa.champions", "uefa.europa"]
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        }
+        all_events = []
+        logging.info("🔄 [Failover Gate] Kích hoạt Cổng 2 (ESPN Public API)...")
+
+        for league in top_leagues:
+            url = f"[suspicious link removed]{league}/scoreboard?dates={today_str_nodash}"
+            try:
+                res = requests.get(url, headers=headers, timeout=8)
                 if res.status_code == 200:
                     data = res.json()
                     events = data.get("events", [])
-                    logging.info(f"📊 Tìm thấy {len(events)} trận đấu thật ngày {today_str}.")
-                    break
-                else:
-                    logging.warning(f"⚠️ Lần thử {attempt}/{self.max_retries}: HTTP {res.status_code}")
-                    time.sleep(self.retry_delay_sec)
+                    for ev in events:
+                        comps = ev.get("competitions", [{}])
+                        competitors = comps.get("competitors", [])
+                        if len(competitors) >= 2:
+                            home_t = competitors.get("team", {}).get("displayName") if competitors.get("homeAway") == "home" else competitors[4].get("team", {}).get("displayName")
+                            away_t = competitors[4].get("team", {}).get("displayName") if competitors.get("homeAway") == "home" else competitors.get("team", {}).get("displayName")
+                            
+                            all_events.append({
+                                "id": ev.get("id"),
+                                "homeTeam": {"name": home_t},
+                                "awayTeam": {"name": away_t},
+                                "startTimestamp": int(datetime.utcnow().timestamp()),
+                                "tournament": {"name": data.get("leagues", [{}]).get("name", league)}
+                            })
             except Exception as e:
-                logging.warning(f"⚠️ Lần thử {attempt}/{self.max_retries} bị lỗi kết nối: {e}")
-                time.sleep(self.retry_delay_sec)
+                logging.warning(f"⚠️ [ESPN {league}] Lỗi: {e}")
+
+        logging.info(f"📊 [ESPN Failover Success] Lấy thành công {len(all_events)} trận đấu thực tế.")
+        return all_events
+
+    def fetch_real_matches_today(self) -> list:
+        today_dt = datetime.utcnow()
+        today_str = today_dt.strftime("%Y-%m-%d")
+        today_str_nodash = today_dt.strftime("%Y%m%d")
+
+        # Cổng 1 + B5 Shield
+        events = self.fetch_sofascore_events(today_str)
+
+        # Failover Gate nếu Cổng 1 bị 403
+        if not events:
+            events = self.fetch_espn_failover_events(today_str_nodash)
 
         if not events:
-            self.log_system_error("E-10", "N/A", {"url": url, "status": "NO_EVENTS_OR_BLOCKED"})
+            self.log_system_error("E-10", "N/A", {"status": "ALL_PORTALS_BLOCKED_OR_NO_MATCHES", "date": today_str})
 
         return events
 
     def save_match_to_supabase(self, match_data: dict) -> bool:
-        """Lưu trận đấu vào CSDL Supabase với cơ chế 2 tầng (RPC + Fallback Direct Upsert)"""
         match_id = match_data.get("match_id")
         
-        # Tầng 1: Thử gọi Stored Procedure rpc_save_baseline_scan
+        # Tầng 1: RPC
         try:
             self.supabase.rpc("rpc_save_baseline_scan", {
                 "p_match_id": match_id,
                 "p_baseline_data": match_data
             }).execute()
-            logging.info(f"✅ [RPC Save Success] Đã nạp match_id: {match_id}")
+            logging.info(f"✅ [RPC Success] Match_ID: {match_id}")
             return True
         except Exception as rpc_err:
-            logging.warning(f"⚠️ RPC thất bại ({rpc_err}). Chuyển sang Tầng 2: Upsert trực tiếp bảng...")
-            
-            # Tầng 2: Fallback trực tiếp vào bảng sop_master_baseline_scans nếu Stored Procedure bị thiếu
+            # Tầng 2: Direct Upsert
             try:
                 row = {
                     "match_id": match_id,
@@ -100,19 +168,18 @@ class StealthScraperEngine:
                     "baseline_payload": match_data
                 }
                 self.supabase.table("sop_master_baseline_scans").upsert(row).execute()
-                logging.info(f"✅ [Direct Upsert Success] Đã nạp match_id: {match_id}")
+                logging.info(f"✅ [Direct Upsert Success] Match_ID: {match_id}")
                 return True
             except Exception as direct_err:
                 self.log_system_error("E-11", match_id, {"rpc_error": str(rpc_err), "direct_error": str(direct_err)})
                 return False
 
     def run(self):
-        """Khởi chạy toàn bộ luồng cào và nạp dữ liệu"""
-        logging.info("🚀 [SOP MASTER Engine] Bắt đầu tiến trình cào dữ liệu Giai Đoạn 1 Baseline...")
+        logging.info("🚀 [SOP MASTER B5 Engine] Khởi chạy tiến trình cào dữ liệu GĐ1 Baseline...")
         events = self.fetch_real_matches_today()
 
         if not events:
-            logging.error("❌ Không tìm thấy dữ liệu trận đấu nào để nạp!")
+            logging.error("❌ Không lấy được trận đấu nào từ các cổng dữ liệu!")
             sys.exit(1)
 
         saved_count = 0
@@ -155,8 +222,8 @@ if __name__ == "__main__":
     key_env = os.environ.get("SUPABASE_KEY")
 
     if not url_env or not key_env:
-        logging.critical("❌ LỖI CẤU HÌNH CRITICAL: Thiếu SUPABASE_URL hoặc SUPABASE_KEY trong Secrets của GitHub!")
+        logging.critical("❌ LỖI CẤU HÌNH CRITICAL: Thiếu SUPABASE_URL hoặc SUPABASE_KEY trong Secrets!")
         sys.exit(1)
 
-    engine = StealthScraperEngine(url_env, key_env)
+    engine = B5StealthScraperEngine(url_env, key_env)
     engine.run()
