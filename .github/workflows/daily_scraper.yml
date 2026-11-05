@@ -1,11 +1,10 @@
 name: SOP Master Daily Scraper
 
 on:
-  workflow_dispatch:  # Nút bấm cào bằng tay trên GitHub
+  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'  # Chạy tự động hàng ngày lúc 00:00 UTC (GĐ1 Baseline)
+    - cron: '0 0 * * *'
 
-# Tự động hủy các lệnh cũ bị kẹt trong hàng chờ khi có lệnh mới
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -14,20 +13,20 @@ jobs:
   run-scraper:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout mã nguồn
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Khởi tạo Python 3.10
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Cài đặt thư viện
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests supabase
 
-      - name: Thực thi kịch bản cào dữ liệu GĐ1
+      - name: Execute Scraper Engine
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
