@@ -71,9 +71,10 @@ class B5StealthScraperEngine:
                     res = requests.get(url, headers=headers, timeout=12)
 
                 if res.status_code == 200:
-                    return res.json().get("events", [])
-                else:
-                    self.apply_random_jitter()
+                    events = res.json().get("events", [])
+                    if events:
+                        return events
+                self.apply_random_jitter()
             except Exception:
                 self.apply_random_jitter()
         return []
@@ -102,7 +103,10 @@ class B5StealthScraperEngine:
                             comps = ev.get("competitions", [])
                             if not comps:
                                 continue
-                            comp = comps if isinstance(comps, list) else comps
+                            # SỬA LỖI TRUY CẬP PHẦN TỬ DẠNG LIST:
+                            comp = comps[0] if isinstance(comps, list) and len(comps) > 0 else comps
+                            if not isinstance(comp, dict):
+                                continue
                             competitors = comp.get("competitors", [])
                             if len(competitors) >= 2:
                                 home_t, away_t = "", ""
@@ -121,7 +125,7 @@ class B5StealthScraperEngine:
                                 if home_t and away_t:
                                     league_title = league
                                     if data.get("leagues") and len(data["leagues"]) > 0:
-                                        league_title = data["leagues"].get("name", league)
+                                        league_title = data["leagues"][0].get("name", league)
 
                                     all_events.append({
                                         "id": ev.get("id"),
@@ -131,8 +135,8 @@ class B5StealthScraperEngine:
                                         "tournament": {"name": league_title},
                                         "status": {"type": status_str}
                                     })
-                except Exception:
-                    pass
+                except Exception as err:
+                    logging.debug(f"ESPN Fetch error: {err}")
 
         return all_events
 
@@ -140,7 +144,7 @@ class B5StealthScraperEngine:
         tz_vn = timezone(timedelta(hours=7))
         now_vn = datetime.now(tz_vn)
 
-        # Rạng sáng (00:00 -> 05:00 AM GMT+7): Lượt trận thuộc về ngày hôm qua
+        # Nếu chạy rạng sáng (00:00 -> 05:00 AM GMT+7): Base date là ngày hôm qua
         if now_vn.hour < 5:
             base_date = now_vn.date() - timedelta(days=1)
         else:
@@ -148,13 +152,14 @@ class B5StealthScraperEngine:
 
         # Mốc bắt đầu: 16:00:00 (GMT+7)
         start_window_vn = datetime(base_date.year, base_date.month, base_date.day, 16, 0, 0, tzinfo=tz_vn)
-        # Mốc kết thúc: 05:00:00 Sáng hôm sau (GMT+7)
+        # Mốc kết thúc: 05:00:00 Sáng hôm sau (GMT+7) -> +13 tiếng
         end_window_vn = start_window_vn + timedelta(hours=13)
 
         ts_start = int(start_window_vn.timestamp())
         ts_end = int(end_window_vn.timestamp())
 
-        # Quét API 3 ngày liên tiếp (Tránh lệch múi giờ UTC/GMT+7)
+        logging.info(f"⏰ Khung giờ tìm kiếm GMT+7: {start_window_vn.strftime('%d/%m %H:%M')} -> {end_window_vn.strftime('%d/%m %H:%M')}")
+
         search_dates_sofascore = [
             (base_date - timedelta(days=1)).strftime("%Y-%m-%d"),
             base_date.strftime("%Y-%m-%d"),
@@ -169,11 +174,13 @@ class B5StealthScraperEngine:
         raw_events = []
         for d_str in search_dates_sofascore:
             events = self.fetch_sofascore_events(d_str)
-            raw_events.extend(events)
+            if events:
+                raw_events.extend(events)
 
         if not raw_events:
-            logging.info("🔄 Kích hoạt ESPN Failover...")
+            logging.info("🔄 Sofascore không trả về dữ liệu -> Kích hoạt ESPN Failover...")
             raw_events = self.fetch_espn_failover_events(search_dates_espn)
+            logging.info(f"📥 ESPN Failover thu thập được {len(raw_events)} trận thô.")
 
         filtered_events = []
         seen_ids = set()
@@ -185,17 +192,15 @@ class B5StealthScraperEngine:
 
             ts = ev.get("startTimestamp")
             
-            # Kiểm tra trạng thái trận đấu từ API
             status_obj = ev.get("status", {})
             if isinstance(status_obj, dict):
                 status_type = str(status_obj.get("type", "")).lower()
             else:
                 status_type = str(status_obj).lower()
 
-            # BỎ QUẢ CÁC TRẬN ĐÃ KẾT THÚC / HỦY / HOÃN
-            is_finished = status_type in ["finished", "ended", "postponed", "canceled", "cancelled", "status_full_time"]
+            is_finished = status_type in ["finished", "ended", "postponed", "canceled", "cancelled", "status_full_time", "status_final"]
 
-            # BỘ LỌC KÉP: Đúng khung 16:00 -> 05:00 AM GMT+7 VÀ Trận CHƯA ĐÁ / ĐANG ĐÁ
+            # LỌC TRẬN NẰM TRONG KHUNG 16:00 -> 05:00 SÁNG HÔM SAU VÀ CHƯA KẾT THÚC
             if ts and (ts_start <= ts <= ts_end) and not is_finished:
                 seen_ids.add(ev_id)
                 filtered_events.append(ev)
