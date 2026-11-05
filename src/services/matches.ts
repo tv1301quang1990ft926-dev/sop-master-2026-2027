@@ -5,7 +5,7 @@ export async function fetchTodayMatches(): Promise<BaselineMatch[]> {
   const { data, error } = await supabase
     .from('sop_master_baseline_scans')
     .select('*')
-    .order('created_at', { ascending: false })
+    .order('match_date', { ascending: true })
     .returns<BaselineMatch[]>();
 
   if (error) {

@@ -1,10 +1,16 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
-import type { BaselineMatch } from '@/types';
+import type { BaselineMatch, H2HEntry } from '@/types';
 
 interface H2HModalProps {
   match: BaselineMatch;
   onClose: () => void;
+}
+
+function getWinner(entry: H2HEntry): string {
+  if (entry.home_score > entry.away_score) return entry.home_team;
+  if (entry.away_score > entry.home_score) return entry.away_team;
+  return 'Hòa';
 }
 
 export default function H2HModal({ match, onClose }: H2HModalProps) {
@@ -16,7 +22,7 @@ export default function H2HModal({ match, onClose }: H2HModalProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const history = match.baseline_payload?.h2h_history ?? [];
+  const history = match?.baseline_payload?.h2h_history || [];
 
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
@@ -37,7 +43,7 @@ export default function H2HModal({ match, onClose }: H2HModalProps) {
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Đóng"
             className="rounded-full p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
           >
             <X className="h-5 w-5" aria-hidden="true" />
@@ -51,16 +57,19 @@ export default function H2HModal({ match, onClose }: H2HModalProps) {
         ) : (
           <ul className="mt-4 divide-y divide-slate-100">
             {history.map((entry, index) => (
-              <li key={`${entry.date}-${index}`} className="flex items-center justify-between gap-3 py-3 text-sm">
-                <div className="min-w-0">
+              <li key={`${entry.date}-${index}`} className="py-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
                   <p className="text-xs text-slate-500">{entry.date}</p>
-                  <p className="truncate font-medium text-slate-900">
-                    {entry.home_team} vs {entry.away_team}
-                  </p>
+                  <span className="font-semibold tabular-nums text-slate-900">
+                    {entry.home_score} - {entry.away_score}
+                  </span>
                 </div>
-                <span className="shrink-0 font-semibold tabular-nums text-slate-900">
-                  {entry.home_score} - {entry.away_score}
-                </span>
+                <p className="mt-1 truncate font-medium text-slate-900">
+                  {entry.home_team} vs {entry.away_team}
+                </p>
+                <p className="mt-1 text-xs text-teal-700">
+                  Winner: <span className="font-semibold">{getWinner(entry)}</span>
+                </p>
               </li>
             ))}
           </ul>

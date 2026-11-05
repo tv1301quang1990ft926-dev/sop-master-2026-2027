@@ -7,6 +7,7 @@ import PhasePlaceholderView from '@/components/PhasePlaceholderView';
 import { PHASES } from '@/constants/phases';
 import { fetchTodayMatches } from '@/services/matches';
 import type { BaselineMatch, LoadStatus, PhaseId } from '@/types';
+import { getVietnamDateKey } from '@/utils/dates';
 
 function App() {
   const [activePhase, setActivePhase] = useState<PhaseId>('baseline');
@@ -29,10 +30,18 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  const orderedMatches = useMemo(
-    () => [...matches].sort((a, b) => Number(trackedIds.has(b.match_id)) - Number(trackedIds.has(a.match_id))),
-    [matches, trackedIds],
-  );
+  const orderedMatches = useMemo(() => {
+    if (matches.length === 0) return [];
+
+    const latestDate = getVietnamDateKey(matches[matches.length - 1].match_date);
+    return matches
+      .filter((match) => getVietnamDateKey(match.match_date) === latestDate)
+      .sort((a, b) => {
+        const trackedOrder = Number(trackedIds.has(b.match_id)) - Number(trackedIds.has(a.match_id));
+        if (trackedOrder !== 0) return trackedOrder;
+        return new Date(a.match_date).getTime() - new Date(b.match_date).getTime();
+      });
+  }, [matches, trackedIds]);
 
   const toggleTrack = (matchId: string) => {
     setTrackedIds((current) => {
