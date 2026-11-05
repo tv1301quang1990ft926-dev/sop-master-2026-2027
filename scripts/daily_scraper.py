@@ -8,7 +8,7 @@ import requests
 from datetime import datetime
 from supabase import create_client, Client
 
-# Lớp 2: Thử import curl_cffi để giả mạo vân tay TLS/JA3 Chrome 128
+# Lớp 2 B5 Shield: Thử import curl_cffi giả lập vân tay TLS/JA3 Chrome 120
 try:
     from curl_cffi import requests as stealth_requests
     HAS_CURL_CFFI = True
@@ -25,11 +25,11 @@ logging.basicConfig(
 class B5StealthScraperEngine:
     def __init__(self, supabase_url: str, supabase_key: str):
         self.max_retries = 2
-        self.supabase_url = supabase_url
-        self.supabase_key = supabase_key
+        self.supabase_url = supabase_url.strip()
+        self.supabase_key = supabase_key.strip()
         
         try:
-            self.supabase: Client = create_client(supabase_url, supabase_key)
+            self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
             logging.info("✅ Khởi tạo Supabase Client thành công.")
         except Exception as e:
             logging.error(f"❌ Không thể kết nối Supabase Client: {e}")
@@ -58,12 +58,15 @@ class B5StealthScraperEngine:
                     "match_id": match_id or "N/A",
                     "log_details": log_details
                 }).execute()
-            except Exception:
-                logging.warning("⚠️ Chưa khởi tạo bảng system_logs trên Supabase, bỏ qua log_error.")
+                logging.info("✅ Đã lưu log_system_error thành công vào bảng system_logs.")
+            except Exception as e:
+                logging.warning(f"⚠️ Chưa khởi tạo bảng system_logs trên Supabase: {e}")
 
     def fetch_sofascore_events(self, today_str: str) -> list:
         """Cổng 1 (Sofascore API thô) + B5 TLS Impersonation"""
-        url = f"[suspicious link removed]{today_str}"
+        host_domain = "api.sofascore.com"
+        url = f"https://{host_domain}/api/v1/sport/football/scheduled-events/{today_str}".strip()
+        
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
@@ -84,7 +87,7 @@ class B5StealthScraperEngine:
                     logging.info(f"📊 [Sofascore B5 Success] Lấy thành công {len(events)} trận đấu.")
                     return events
                 else:
-                    logging.warning(f"⚠️ [Sofascore B5] Lần {attempt}/{self.max_retries} bị chặn mã {res.status_code}")
+                    logging.warning(f"⚠️ [Sofascore B5] Lần {attempt}/{self.max_retries} bị phản hồi mã {res.status_code}")
                     self.apply_random_jitter()
             except Exception as e:
                 logging.warning(f"⚠️ [Sofascore B5] Lần {attempt}/{self.max_retries} lỗi: {e}")
@@ -99,10 +102,11 @@ class B5StealthScraperEngine:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
         }
         all_events = []
+        espn_host = "[suspicious link removed]"
         logging.info("🔄 [Failover Gate] Kích hoạt Cổng 2 (ESPN Public API)...")
 
         for league in top_leagues:
-            url = f"[suspicious link removed]{league}/scoreboard?dates={today_str_nodash}"
+            url = f"https://{espn_host}/apis/site/v2/sports/soccer/{league}/scoreboard?dates={today_str_nodash}".strip()
             try:
                 res = requests.get(url, headers=headers, timeout=8)
                 if res.status_code == 200:
@@ -110,17 +114,17 @@ class B5StealthScraperEngine:
                     events = data.get("events", [])
                     for ev in events:
                         comps = ev.get("competitions", [{}])
-                        competitors = comps.get("competitors", [])
+                        competitors = comps[0].get("competitors", []) if comps else []
                         if len(competitors) >= 2:
-                            home_t = competitors.get("team", {}).get("displayName") if competitors.get("homeAway") == "home" else competitors[4].get("team", {}).get("displayName")
-                            away_t = competitors[4].get("team", {}).get("displayName") if competitors.get("homeAway") == "home" else competitors.get("team", {}).get("displayName")
+                            home_t = competitors[0].get("team", {}).get("displayName") if competitors[0].get("homeAway") == "home" else competitors[1].get("team", {}).get("displayName")
+                            away_t = competitors[1].get("team", {}).get("displayName") if competitors[0].get("homeAway") == "home" else competitors[0].get("team", {}).get("displayName")
                             
                             all_events.append({
                                 "id": ev.get("id"),
                                 "homeTeam": {"name": home_t},
                                 "awayTeam": {"name": away_t},
                                 "startTimestamp": int(datetime.utcnow().timestamp()),
-                                "tournament": {"name": data.get("leagues", [{}]).get("name", league)}
+                                "tournament": {"name": data.get("leagues", [{}])[0].get("name", league)}
                             })
             except Exception as e:
                 logging.warning(f"⚠️ [ESPN {league}] Lỗi: {e}")
@@ -136,7 +140,7 @@ class B5StealthScraperEngine:
         # Cổng 1 + B5 Shield
         events = self.fetch_sofascore_events(today_str)
 
-        # Failover Gate nếu Cổng 1 bị 403
+        # Failover Gate nếu Cổng 1 bị lỗi / không lấy được trận
         if not events:
             events = self.fetch_espn_failover_events(today_str_nodash)
 
