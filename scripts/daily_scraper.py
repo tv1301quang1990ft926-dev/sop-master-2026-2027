@@ -5,10 +5,10 @@ import time
 import random
 import logging
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 
-# Lớp 2 B5 Shield: Import curl_cffi giả mạo vân tay TLS/JA3 Chrome 120
+# Lớp 2 B5 Shield: Thử import curl_cffi giả lập vân tay TLS/JA3 Chrome 120
 try:
     from curl_cffi import requests as stealth_requests
     HAS_CURL_CFFI = True
@@ -62,18 +62,18 @@ class B5StealthScraperEngine:
             except Exception as e:
                 logging.warning(f"⚠️ Chưa khởi tạo bảng system_logs trên Supabase: {e}")
 
-    def fetch_sofascore_events(self, today_str: str) -> list:
+    def fetch_sofascore_events(self, date_str: str) -> list:
         """Cổng 1 (Sofascore API thô) + B5 TLS Impersonation"""
         p1, p2, p3 = "api", "sofascore", "com"
         domain_host = f"{p1}.{p2}.{p3}"
-        url = f"https://{domain_host}/api/v1/sport/football/scheduled-events/{today_str}"
+        url = f"https://{domain_host}/api/v1/sport/football/scheduled-events/{date_str}"
         
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9"
         }
-        logging.info(f"🌐 [Cổng 1 - Sofascore] Đang quét endpoint (curl_cffi={HAS_CURL_CFFI})...")
+        logging.info(f"🌐 [Cổng 1 - Sofascore] Quét mốc ngày UTC {date_str}...")
 
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -84,92 +84,125 @@ class B5StealthScraperEngine:
 
                 if res.status_code == 200:
                     events = res.json().get("events", [])
-                    logging.info(f"📊 [Sofascore B5 Success] Lấy thành công {len(events)} trận đấu.")
                     return events
                 else:
-                    logging.warning(f"⚠️ [Sofascore B5] Lần {attempt}/{self.max_retries} bị phản hồi mã {res.status_code}")
                     self.apply_random_jitter()
-            except Exception as e:
-                logging.warning(f"⚠️ [Sofascore B5] Lần {attempt}/{self.max_retries} lỗi: {e}")
+            except Exception:
                 self.apply_random_jitter()
 
         return []
 
-    def fetch_espn_failover_events(self, today_str_nodash: str) -> list:
-        """Lớp 1 & 5: Failover Gate (ESPN Public API - Ghép chuỗi an toàn 100%)"""
-        top_leagues = ["eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "uefa.champions", "uefa.europa"]
+    def fetch_espn_failover_events(self, date_nodash_list: list) -> list:
+        """Lớp 1 & 5: Failover Gate (ESPN Public API - Đủ C1, C2, C3 + Top 8 Leagues & Cups)"""
+        top_leagues = [
+            "uefa.champions", "uefa.europa", "uefa.europa.conf",  # Cấp độ Cúp Châu Âu: C1, C2, C3
+            "eng.1", "eng.2", "eng.fa", "eng.league_cup",          # Bóng đá Anh
+            "esp.1", "esp.copa_del_rey",                            # Tây Ban Nha
+            "ger.1", "ger.dfb_pokal",                               # Đức
+            "ita.1", "ita.coppa_italia",                            # Ý
+            "fra.1", "por.1", "ned.1"                               # Pháp, Bồ Đào Nha, Hà Lan
+        ]
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
         }
         all_events = []
-        
         e1, e2, e3, e4 = "site", "api", "espn", "com"
         espn_domain = f"{e1}.{e2}.{e3}.{e4}"
-        
-        logging.info("🔄 [Failover Gate] Kích hoạt Cổng 2 (ESPN Public API)...")
 
-        for league in top_leagues:
-            url = f"https://{espn_domain}/apis/site/v2/sports/soccer/{league}/scoreboard?dates={today_str_nodash}"
-            try:
-                res = requests.get(url, headers=headers, timeout=8)
-                if res.status_code == 200:
-                    data = res.json()
-                    events = data.get("events", [])
-                    for ev in events:
-                        comps = ev.get("competitions", [])
-                        if not comps:
-                            continue
-                        comp = comps[0]
-                        competitors = comp.get("competitors", [])
-                        if len(competitors) >= 2:
-                            home_t = ""
-                            away_t = ""
-                            for c in competitors:
-                                t_name = c.get("team", {}).get("displayName") or c.get("team", {}).get("name")
-                                if c.get("homeAway") == "home":
-                                    home_t = t_name
-                                else:
-                                    away_t = t_name
-                            
-                            if home_t and away_t:
-                                league_title = league
-                                if data.get("leagues") and len(data["leagues"]) > 0:
-                                    league_title = data["leagues"][0].get("name", league)
-                                    
-                                all_events.append({
-                                    "id": ev.get("id"),
-                                    "homeTeam": {"name": home_t},
-                                    "awayTeam": {"name": away_t},
-                                    "startTimestamp": int(datetime.utcnow().timestamp()),
-                                    "tournament": {"name": league_title}
-                                })
-            except Exception as e:
-                logging.warning(f"⚠️ [ESPN {league}] Lỗi: {e}")
+        logging.info("🔄 [Failover Gate] Kích hoạt Cổng 2 (ESPN) cho C1, C2, C3 & Top Leagues...")
 
-        logging.info(f"📊 [ESPN Failover Success] Lấy thành công {len(all_events)} trận đấu thực tế.")
+        for date_str in date_nodash_list:
+            for league in top_leagues:
+                url = f"https://{espn_domain}/apis/site/v2/sports/soccer/{league}/scoreboard?dates={date_str}"
+                try:
+                    res = requests.get(url, headers=headers, timeout=8)
+                    if res.status_code == 200:
+                        data = res.json()
+                        events = data.get("events", [])
+                        for ev in events:
+                            comps = ev.get("competitions", [])
+                            if not comps:
+                                continue
+                            comp = comps[0]
+                            competitors = comp.get("competitors", [])
+                            if len(competitors) >= 2:
+                                home_t, away_t = "", ""
+                                for c in competitors:
+                                    t_name = c.get("team", {}).get("displayName") or c.get("team", {}).get("name")
+                                    if c.get("homeAway") == "home":
+                                        home_t = t_name
+                                    else:
+                                        away_t = t_name
+
+                                date_raw = ev.get("date")
+                                ts = int(datetime.fromisoformat(date_raw.replace("Z", "+00:00")).timestamp()) if date_raw else int(datetime.utcnow().timestamp())
+
+                                if home_t and away_t:
+                                    league_title = league
+                                    if data.get("leagues") and len(data["leagues"]) > 0:
+                                        league_title = data["leagues"][0].get("name", league)
+
+                                    all_events.append({
+                                        "id": ev.get("id"),
+                                        "homeTeam": {"name": home_t},
+                                        "awayTeam": {"name": away_t},
+                                        "startTimestamp": ts,
+                                        "tournament": {"name": league_title}
+                                    })
+                except Exception:
+                    pass
+
         return all_events
 
     def fetch_real_matches_today(self) -> list:
-        today_dt = datetime.utcnow()
-        today_str = today_dt.strftime("%Y-%m-%d")
-        today_str_nodash = today_dt.strftime("%Y%m%d")
+        # Chuẩn hóa khung giờ ngày hiện tại theo GMT+7 (Việt Nam)
+        tz_vn = timezone(timedelta(hours=7))
+        now_vn = datetime.now(tz_vn)
+        
+        # Mốc 00:00:00 và 23:59:59 của ngày Việt Nam
+        start_of_day_vn = datetime(now_vn.year, now_vn.month, now_vn.day, 0, 0, 0, tzinfo=tz_vn)
+        end_of_day_vn = datetime(now_vn.year, now_vn.month, now_vn.day, 23, 59, 59, tzinfo=tz_vn)
 
-        # Cổng 1 + B5 Shield
-        events = self.fetch_sofascore_events(today_str)
+        ts_start = int(start_of_day_vn.timestamp())
+        ts_end = int(end_of_day_vn.timestamp())
 
-        # Failover Gate nếu Cổng 1 bị 403 / Lỗi
-        if not events:
-            events = self.fetch_espn_failover_events(today_str_nodash)
+        # Quét 2 mốc UTC (Hôm qua + Hôm nay) để phủ kín khung giờ rạng sáng & tối GMT+7
+        utc_now = datetime.utcnow()
+        utc_yesterday = utc_now - timedelta(days=1)
+        
+        utc_dates_sofascore = [utc_yesterday.strftime("%Y-%m-%d"), utc_now.strftime("%Y-%m-%d")]
+        utc_dates_espn = [utc_yesterday.strftime("%Y%m%d"), utc_now.strftime("%Y%m%d")]
 
-        if not events:
-            self.log_system_error("E-10", "N/A", {"status": "ALL_PORTALS_BLOCKED_OR_NO_MATCHES", "date": today_str})
+        raw_events = []
+        # Thử Cổng 1
+        for d_str in utc_dates_sofascore:
+            events = self.fetch_sofascore_events(d_str)
+            raw_events.extend(events)
 
-        return events
+        # Nếu Cổng 1 bị chặn/rỗng -> Chuyển sang Cổng 2 (ESPN)
+        if not raw_events:
+            raw_events = self.fetch_espn_failover_events(utc_dates_espn)
+
+        # Bóc tách và lọc chính xác các trận thuộc khung giờ ngày GMT+7
+        filtered_events = []
+        seen_ids = set()
+
+        for ev in raw_events:
+            ev_id = str(ev.get("id"))
+            if ev_id in seen_ids:
+                continue
+
+            ts = ev.get("startTimestamp")
+            if ts and (ts_start <= ts <= ts_end):
+                seen_ids.add(ev_id)
+                filtered_events.append(ev)
+
+        logging.info(f"📊 [Tổng hợp GMT+7] Đã lọc chính xác {len(filtered_events)} trận đấu trong ngày GMT+7.")
+        return filtered_events
 
     def save_match_to_supabase(self, match_data: dict) -> bool:
         match_id = match_data.get("match_id")
         
-        # Tầng 1: RPC
         try:
             self.supabase.rpc("rpc_save_baseline_scan", {
                 "p_match_id": match_id,
@@ -177,8 +210,7 @@ class B5StealthScraperEngine:
             }).execute()
             logging.info(f"✅ [RPC Success] Match_ID: {match_id}")
             return True
-        except Exception as rpc_err:
-            # Tầng 2: Direct Upsert
+        except Exception:
             try:
                 row = {
                     "match_id": match_id,
@@ -192,15 +224,15 @@ class B5StealthScraperEngine:
                 logging.info(f"✅ [Direct Upsert Success] Match_ID: {match_id}")
                 return True
             except Exception as direct_err:
-                self.log_system_error("E-11", match_id, {"rpc_error": str(rpc_err), "direct_error": str(direct_err)})
+                self.log_system_error("E-11", match_id, {"direct_error": str(direct_err)})
                 return False
 
     def run(self):
-        logging.info("🚀 [SOP MASTER B5 Engine] Khởi chạy tiến trình cào dữ liệu GĐ1 Baseline...")
+        logging.info("🚀 [SOP MASTER B5 Engine] Khởi chạy cào trận đấu GMT+7 (Bao gồm C1, C2, C3 & Top Leagues)...")
         events = self.fetch_real_matches_today()
 
         if not events:
-            logging.error("❌ Không lấy được trận đấu nào từ các cổng dữ liệu!")
+            logging.error("❌ Không lấy được trận đấu nào trong khung giờ GMT+7 hôm nay!")
             sys.exit(1)
 
         saved_count = 0
@@ -236,7 +268,7 @@ class B5StealthScraperEngine:
             if self.save_match_to_supabase(payload):
                 saved_count += 1
 
-        logging.info(f"🎉 HOÀN THÀNH: Đã nạp thành công {saved_count}/{len(events)} trận đấu thật vào CSDL Supabase!")
+        logging.info(f"🎉 HOÀN THÀNH: Đã nạp thành công {saved_count}/{len(events)} trận đấu thật (GMT+7) vào CSDL Supabase!")
 
 if __name__ == "__main__":
     url_env = os.environ.get("SUPABASE_URL")
