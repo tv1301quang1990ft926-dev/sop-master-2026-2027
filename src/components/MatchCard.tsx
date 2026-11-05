@@ -1,6 +1,6 @@
 import { Eye } from 'lucide-react';
 import type { BaselineMatch } from '@/types';
-import { formatKickoffTime } from '@/utils/dates';
+import { formatKickoffDateTime } from '@/utils/dates';
 
 interface MatchCardProps {
   match: BaselineMatch;
@@ -56,7 +56,7 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
     <li className="overflow-hidden rounded-2xl border border-slate-600 bg-[#1b202c] text-white shadow-lg transition duration-200 hover:-translate-y-0.5 hover:border-slate-500 hover:shadow-xl">
       <header className="flex items-center justify-between gap-3 border-b border-slate-600 px-4 py-4 sm:px-5">
         <h3 className="min-w-0 truncate text-base font-bold uppercase tracking-wide text-white sm:text-lg">{match.league_name}</h3>
-        <time className="shrink-0 text-sm font-semibold tabular-nums text-cyan-300 sm:text-base">{formatKickoffTime(match.match_date)} GMT+7</time>
+        <time className="shrink-0 text-sm font-semibold tabular-nums text-cyan-300 sm:text-base">{formatKickoffDateTime(match.match_date)}</time>
       </header>
 
       <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(74px,0.9fr))] gap-2 px-3 py-4 sm:grid-cols-[minmax(190px,1.2fr)_repeat(3,minmax(110px,0.8fr))] sm:gap-3 sm:px-5 sm:py-5">

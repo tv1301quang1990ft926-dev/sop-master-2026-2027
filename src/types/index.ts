@@ -24,8 +24,9 @@ export interface H2HEntry {
   date: string;
   home_team: string;
   away_team: string;
-  home_score: number;
-  away_score: number;
+  score?: string | null;
+  home_score?: number | null;
+  away_score?: number | null;
   winner?: string | null;
 }
 
