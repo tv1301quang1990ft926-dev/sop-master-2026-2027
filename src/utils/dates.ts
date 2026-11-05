@@ -13,3 +13,12 @@ export function getTodayRangeGmt7(now: Date = new Date()): { start: string; end:
 
   return { start: start.toISOString(), end: end.toISOString() };
 }
+
+export function formatKickoffTime(iso: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: VIETNAM_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(iso));
+}
