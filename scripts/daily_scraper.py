@@ -79,17 +79,9 @@ class B5StealthScraperEngine:
         return []
 
     def fetch_espn_failover_events(self, date_nodash_list: list) -> list:
-        # CHỈ LẤY TOP 8 GIẢI VĐQG HÀNG ĐẦU & CÁN CÂN CÚP CHÂU ÂU (C1, C2, C3)
-        # Bỏ toàn bộ cúp phụ hạng dưới như esp.copa_del_rey, eng.2
         top_8_leagues = [
             "uefa.champions", "uefa.europa", "uefa.europa.conf",  # C1, C2, C3
-            "eng.1",  # Ngoại Hạng Anh
-            "esp.1",  # La Liga
-            "ger.1",  # Bundesliga
-            "ita.1",  # Serie A
-            "fra.1",  # Ligue 1
-            "por.1",  # Primeira Liga (Bồ Đào Nha)
-            "ned.1"   # Eredivisie (Hà Lan)
+            "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "por.1", "ned.1"
         ]
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
@@ -110,7 +102,7 @@ class B5StealthScraperEngine:
                             comps = ev.get("competitions", [])
                             if not comps:
                                 continue
-                            comp = comps[0]
+                            comp = comps if isinstance(comps, list) else comps
                             competitors = comp.get("competitors", [])
                             if len(competitors) >= 2:
                                 home_t, away_t = "", ""
@@ -127,7 +119,7 @@ class B5StealthScraperEngine:
                                 if home_t and away_t:
                                     league_title = league
                                     if data.get("leagues") and len(data["leagues"]) > 0:
-                                        league_title = data["leagues"][0].get("name", league)
+                                        league_title = data["leagues"].get("name", league)
 
                                     all_events.append({
                                         "id": ev.get("id"),
@@ -142,20 +134,30 @@ class B5StealthScraperEngine:
         return all_events
 
     def fetch_real_matches_today(self) -> list:
-        now_utc_ts = int(datetime.utcnow().timestamp())
-        
         tz_vn = timezone(timedelta(hours=7))
         now_vn = datetime.now(tz_vn)
-        
-        # Lấy mốc từ thời điểm HIỆN TẠI đến 23:59:59 đêm nay giờ VN (CHỈ LẤY TRẬN CHƯA ĐÁ)
-        end_of_day_vn = datetime(now_vn.year, now_vn.month, now_vn.day, 23, 59, 59, tzinfo=tz_vn)
-        ts_end = int(end_of_day_vn.timestamp())
 
-        utc_now = datetime.utcnow()
-        utc_yesterday = utc_now - timedelta(days=1)
-        
-        utc_dates_sofascore = [utc_yesterday.strftime("%Y-%m-%d"), utc_now.strftime("%Y-%m-%d")]
-        utc_dates_espn = [utc_yesterday.strftime("%Y%m%d"), utc_now.strftime("%Y%m%d")]
+        # XÁC ĐỊNH MỐC NGÀY THI ĐẤU CHUẨN GMT+7:
+        # Nếu bây giờ là rạng sáng (00:00 - 05:00 AM), lượt trận bắt đầu từ 16:00 chiều hôm qua.
+        if now_vn.hour < 5:
+            base_date = now_vn.date() - timedelta(days=1)
+        else:
+            base_date = now_vn.date()
+
+        # Mốc bắt đầu: 16:00:00 (GMT+7)
+        start_window_vn = datetime(base_date.year, base_date.month, base_date.day, 16, 0, 0, tzinfo=tz_vn)
+        # Mốc kết thúc: 04:00:00 Sáng hôm sau (GMT+7) -> Trọn vẹn 12 tiếng khung giờ bóng đá Châu Âu
+        end_window_vn = start_window_vn + timedelta(hours=12)
+
+        ts_start = int(start_window_vn.timestamp())
+        ts_end = int(end_window_vn.timestamp())
+
+        # Tạo chuỗi ngày UTC tương ứng
+        utc_start_dt = start_window_vn.astimezone(timezone.utc)
+        utc_end_dt = end_window_vn.astimezone(timezone.utc)
+
+        utc_dates_sofascore = [utc_start_dt.strftime("%Y-%m-%d"), utc_end_dt.strftime("%Y-%m-%d")]
+        utc_dates_espn = [utc_start_dt.strftime("%Y%m%d"), utc_end_dt.strftime("%Y%m%d")]
 
         raw_events = []
         for d_str in utc_dates_sofascore:
@@ -174,12 +176,12 @@ class B5StealthScraperEngine:
                 continue
 
             ts = ev.get("startTimestamp")
-            # ĐIỀU KIỆN LỌC CHUẨN: Chỉ lấy trận CHƯA ĐÁ (ts >= now_utc_ts - 15 phút buffer)
-            if ts and (now_utc_ts - 900 <= ts <= ts_end + 28800):
+            # CHỈ LẤY TRẬN NẰM TRONG KHUNG 16:00 -> 04:00 AM (GMT+7)
+            if ts and (ts_start <= ts <= ts_end):
                 seen_ids.add(ev_id)
                 filtered_events.append(ev)
 
-        logging.info(f"📊 [Lọc Trận Sắp Đá] Đã lọc chuẩn {len(filtered_events)} trận CHƯA ĐÁ thuộc Top 8 Giải.")
+        logging.info(f"📊 [Khung Giờ 16:00 -> 04:00 GMT+7] Lọc thành công {len(filtered_events)} trận đấu thuộc Top 8 Giải.")
         return filtered_events
 
     def save_match_to_supabase(self, match_data: dict) -> bool:
@@ -207,11 +209,11 @@ class B5StealthScraperEngine:
                 return False
 
     def run(self):
-        logging.info("🚀 [SOP MASTER Engine] Bắt đầu cào trận CHƯA ĐÁ Top 8 Giải...")
+        logging.info("🚀 [SOP MASTER Engine] Quét trận đấu Châu Âu khung giờ 16:00 -> 04:00 GMT+7...")
         events = self.fetch_real_matches_today()
 
         if not events:
-            logging.error("❌ Không có trận chưa đá nào trong danh sách Top 8 hôm nay!")
+            logging.error("❌ Không có trận đấu nào trong khung giờ 16:00 -> 04:00 hôm nay!")
             sys.exit(1)
 
         saved_count = 0
@@ -229,15 +231,12 @@ class B5StealthScraperEngine:
             match_id = f"{today_str}_{event_id}"
             match_date_iso = datetime.utcfromtimestamp(start_ts).isoformat() + "Z"
 
-            # TÍNH GIỜ THI ĐẤU HIỂN THỊ CHUẨN GMT+7 (VD: 21:00, 03:00)
             dt_vn = datetime.utcfromtimestamp(start_ts) + timedelta(hours=7)
-            kickoff_time_str = dt_vn.strftime("%H:%M")
+            kickoff_time_str = dt_vn.strftime("%d/%m %H:%M")
 
-            # KHỞI TẠO MẢNG H2H MẪU CHUẨN ĐỂ BOLT POPUP NẠP ĐƯỢC
             sample_h2h = [
                 {"date": "2024-03-15", "home_team": home, "away_team": away, "score": "2 - 1", "winner": "HOME"},
-                {"date": "2023-10-20", "home_team": away, "away_team": home, "score": "1 - 1", "winner": "DRAW"},
-                {"date": "2023-04-05", "home_team": home, "away_team": away, "score": "0 - 2", "winner": "AWAY"}
+                {"date": "2023-10-20", "home_team": away, "away_team": home, "score": "1 - 1", "winner": "DRAW"}
             ]
 
             payload = {
@@ -260,7 +259,7 @@ class B5StealthScraperEngine:
             if self.save_match_to_supabase(payload):
                 saved_count += 1
 
-        logging.info(f"🎉 HOÀN THÀNH: Đã nạp {saved_count}/{len(events)} trận CHƯA ĐÁ Top 8 Giải vào Supabase!")
+        logging.info(f"🎉 HOÀN THÀNH: Đã nạp {saved_count}/{len(events)} trận đấu khung giờ 16h-04h vào CSDL Supabase!")
 
 if __name__ == "__main__":
     url_env = os.environ.get("SUPABASE_URL")
