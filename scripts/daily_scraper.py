@@ -8,7 +8,6 @@ import requests
 from datetime import datetime
 from supabase import create_client, Client
 
-# Lớp 2 B5 Shield: Thử import curl_cffi giả lập vân tay TLS/JA3 Chrome 120
 try:
     from curl_cffi import requests as stealth_requests
     HAS_CURL_CFFI = True
@@ -64,14 +63,12 @@ class B5StealthScraperEngine:
 
     def fetch_sofascore_events(self, today_str: str) -> list:
         """Cổng 1 (Sofascore API thô) + B5 TLS Impersonation"""
-        host_domain = "api.sofascore.com"
-        url = f"https://{host_domain}/api/v1/sport/football/scheduled-events/{today_str}".strip()
-        
+        domain_host = "api.sofascore.com"
+        url = f"https://{domain_host}/api/v1/sport/football/scheduled-events/{today_str}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "[suspicious link removed]"
+            "Accept-Language": "en-US,en;q=0.9"
         }
         logging.info(f"🌐 [Cổng 1 - Sofascore] Đang quét endpoint: {url} (curl_cffi={HAS_CURL_CFFI})")
 
@@ -96,7 +93,7 @@ class B5StealthScraperEngine:
         return []
 
     def fetch_espn_failover_events(self, today_str_nodash: str) -> list:
-        """Lớp 1 & 5: Failover Gate (Cổng 2 dự phòng ESPN Public API - Không bị chặn IP Datacenter)"""
+        """Lớp 1 & 5: Failover Gate (ESPN Public API - Sạch 100% khoảng trắng)"""
         top_leagues = ["eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "uefa.champions", "uefa.europa"]
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
@@ -106,26 +103,36 @@ class B5StealthScraperEngine:
         logging.info("🔄 [Failover Gate] Kích hoạt Cổng 2 (ESPN Public API)...")
 
         for league in top_leagues:
-            url = f"https://{espn_host}/apis/site/v2/sports/soccer/{league}/scoreboard?dates={today_str_nodash}".strip()
+            url = f"https://{espn_host}/apis/site/v2/sports/soccer/{league}/scoreboard?dates={today_str_nodash}"
             try:
                 res = requests.get(url, headers=headers, timeout=8)
                 if res.status_code == 200:
                     data = res.json()
                     events = data.get("events", [])
                     for ev in events:
-                        comps = ev.get("competitions", [{}])
-                        competitors = comps[0].get("competitors", []) if comps else []
+                        comps = ev.get("competitions", [])
+                        if not comps:
+                            continue
+                        comp = comps[0]
+                        competitors = comp.get("competitors", [])
                         if len(competitors) >= 2:
-                            home_t = competitors[0].get("team", {}).get("displayName") if competitors[0].get("homeAway") == "home" else competitors[1].get("team", {}).get("displayName")
-                            away_t = competitors[1].get("team", {}).get("displayName") if competitors[0].get("homeAway") == "home" else competitors[0].get("team", {}).get("displayName")
+                            home_t = ""
+                            away_t = ""
+                            for c in competitors:
+                                t_name = c.get("team", {}).get("displayName") or c.get("team", {}).get("name")
+                                if c.get("homeAway") == "home":
+                                    home_t = t_name
+                                else:
+                                    away_t = t_name
                             
-                            all_events.append({
-                                "id": ev.get("id"),
-                                "homeTeam": {"name": home_t},
-                                "awayTeam": {"name": away_t},
-                                "startTimestamp": int(datetime.utcnow().timestamp()),
-                                "tournament": {"name": data.get("leagues", [{}])[0].get("name", league)}
-                            })
+                            if home_t and away_t:
+                                all_events.append({
+                                    "id": ev.get("id"),
+                                    "homeTeam": {"name": home_t},
+                                    "awayTeam": {"name": away_t},
+                                    "startTimestamp": int(datetime.utcnow().timestamp()),
+                                    "tournament": {"name": data.get("leagues", [{}])[0].get("name", league) if data.get("leagues") else league}
+                                })
             except Exception as e:
                 logging.warning(f"⚠️ [ESPN {league}] Lỗi: {e}")
 
@@ -140,7 +147,7 @@ class B5StealthScraperEngine:
         # Cổng 1 + B5 Shield
         events = self.fetch_sofascore_events(today_str)
 
-        # Failover Gate nếu Cổng 1 bị lỗi / không lấy được trận
+        # Failover Gate nếu Cổng 1 bị 403 / Lỗi
         if not events:
             events = self.fetch_espn_failover_events(today_str_nodash)
 
