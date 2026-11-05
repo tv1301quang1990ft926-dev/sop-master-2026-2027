@@ -8,6 +8,7 @@ interface H2HModalProps {
 }
 
 function getWinner(entry: H2HEntry): string {
+  if (entry.winner) return entry.winner;
   if (entry.home_score > entry.away_score) return entry.home_team;
   if (entry.away_score > entry.home_score) return entry.away_team;
   return 'Hòa';

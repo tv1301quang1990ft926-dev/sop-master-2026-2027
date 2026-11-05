@@ -26,14 +26,23 @@ export interface H2HEntry {
   away_team: string;
   home_score: number;
   away_score: number;
+  winner?: string | null;
 }
 
 export interface BaselinePayload {
   xg_home_baseline: number | null;
   xg_away_baseline: number | null;
+  odds_home_1x2?: number | null;
+  odds_draw_1x2?: number | null;
+  odds_away_1x2?: number | null;
   handicap_opening: number | null;
   odds_home_opening: number | null;
   odds_away_opening: number | null;
+  over_under_opening?: number | null;
+  odds_over_opening?: number | null;
+  odds_under_opening?: number | null;
+  home_logo?: string | null;
+  away_logo?: string | null;
   h2h_history?: H2HEntry[] | null;
 }
 
@@ -43,5 +52,7 @@ export interface BaselineMatch {
   league_name: string;
   home_team: string;
   away_team: string;
+  home_logo?: string | null;
+  away_logo?: string | null;
   baseline_payload: BaselinePayload | null;
 }
