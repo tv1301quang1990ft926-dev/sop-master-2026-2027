@@ -9,90 +9,84 @@ interface MatchCardProps {
   onOpenH2H: () => void;
 }
 
-interface MetricProps {
-  label: string;
-  value: string;
-}
-
-function Metric({ label, value }: MetricProps) {
-  return (
-    <div className="rounded-xl bg-slate-50 px-2.5 py-2">
-      <dt className="text-[11px] font-medium leading-tight text-slate-500">{label}</dt>
-      <dd className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{value}</dd>
-    </div>
-  );
-}
-
-function formatHandicap(value: number | null): string {
-  if (value === null) return '--';
-  return value > 0 ? `+${value.toFixed(2)}` : value.toFixed(2);
-}
-
 function formatOdds(value: number | null): string {
   return value === null ? '--' : value.toFixed(2);
 }
 
-function formatXg(home: number | null, away: number | null): string {
-  if (home === null || away === null) return '--';
-  return `${home.toFixed(2)} vs ${away.toFixed(2)}`;
+function formatHandicap(value: number | null, side: 'home' | 'away'): string {
+  if (value === null) return '--';
+  const handicap = side === 'home' ? value : -value;
+  return handicap > 0 ? `+${handicap.toFixed(2)}` : handicap.toFixed(2);
+}
+
+interface OddsCellProps {
+  label: string;
+  value: string;
+}
+
+function OddsCell({ label, value }: OddsCellProps) {
+  return (
+    <div className="flex min-h-20 flex-col justify-center rounded-xl border border-slate-600/80 bg-slate-900/40 px-2 py-2 text-center">
+      <span className="text-xs leading-tight text-slate-300">{label}</span>
+      <strong className="mt-1 text-2xl font-bold tabular-nums text-white">{value}</strong>
+    </div>
+  );
 }
 
 export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }: MatchCardProps) {
   const payload = match.baseline_payload;
 
   return (
-    <li className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow duration-200 hover:shadow-md">
-      <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-800">
+    <li className="overflow-hidden rounded-2xl border border-slate-600 bg-[#1b202c] text-white shadow-lg transition duration-200 hover:-translate-y-0.5 hover:border-slate-500 hover:shadow-xl">
+      <header className="flex items-center justify-between gap-3 border-b border-slate-600 px-4 py-4 sm:px-5">
+        <h3 className="min-w-0 truncate text-base font-bold uppercase tracking-wide text-white sm:text-lg">
           {match.league_name}
-        </span>
-        <time className="shrink-0 text-xs font-semibold tabular-nums text-slate-700">
+        </h3>
+        <time className="shrink-0 text-sm font-semibold tabular-nums text-cyan-300 sm:text-base">
           {formatKickoffTime(match.match_date)} GMT+7
         </time>
-      </div>
+      </header>
 
-      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Đội nhà</p>
-          <p className="truncate text-base font-semibold text-slate-900">{match.home_team}</p>
+      <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(74px,0.9fr))] gap-2 px-3 py-4 sm:grid-cols-[minmax(190px,1.2fr)_repeat(3,minmax(110px,0.8fr))] sm:gap-3 sm:px-5 sm:py-5">
+        <div />
+        <p className="text-center text-xs font-medium leading-tight text-slate-300 sm:text-sm">Toàn Trận - 1X2</p>
+        <p className="text-center text-xs font-medium leading-tight text-slate-300 sm:text-sm">Toàn Trận - Cược Chấp</p>
+        <p className="text-center text-xs font-medium leading-tight text-slate-300 sm:text-sm">Toàn Trận - Tài/Xỉu</p>
+
+        <div className="flex min-w-0 items-center py-1">
+          <p className="truncate text-lg font-bold text-white sm:text-2xl">{match.home_team}</p>
         </div>
-        <span className="text-sm text-slate-400">vs</span>
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Đội khách</p>
-          <p className="truncate text-base font-semibold text-slate-900">{match.away_team}</p>
+        <OddsCell label="Đội nhà" value={formatOdds(payload?.odds_home_opening ?? null)} />
+        <OddsCell label={formatHandicap(payload?.handicap_opening ?? null, 'home')} value={formatOdds(payload?.odds_home_opening ?? null)} />
+        <OddsCell label="o 2.75" value="--" />
+
+        <div className="flex min-w-0 items-center py-1">
+          <p className="truncate text-lg font-bold text-white sm:text-2xl">{match.away_team}</p>
         </div>
-      </div>
+        <OddsCell label="Đội khách" value={formatOdds(payload?.odds_away_opening ?? null)} />
+        <OddsCell label={formatHandicap(payload?.handicap_opening ?? null, 'away')} value={formatOdds(payload?.odds_away_opening ?? null)} />
+        <OddsCell label="u 2.75" value="--" />
 
-      <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Metric label="Handicap mở" value={formatHandicap(payload?.handicap_opening ?? null)} />
-        <Metric label="Odds nhà mở" value={formatOdds(payload?.odds_home_opening ?? null)} />
-        <Metric label="Odds khách mở" value={formatOdds(payload?.odds_away_opening ?? null)} />
-        <Metric
-          label="xG nhà vs khách"
-          value={formatXg(payload?.xg_home_baseline ?? null, payload?.xg_away_baseline ?? null)}
-        />
-      </dl>
-
-      <div className="mt-4 flex gap-2">
         <button
           type="button"
           onClick={onOpenH2H}
-          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50"
+          className="mt-1 min-h-20 rounded-xl border border-slate-600 bg-slate-900/40 px-3 text-base font-bold text-white transition-colors hover:bg-slate-800 sm:text-xl"
         >
-          <Eye className="h-4 w-4" aria-hidden="true" />
+          <Eye className="mx-auto mb-1 h-5 w-5 sm:hidden" aria-hidden="true" />
           Xem H2H
         </button>
+        <OddsCell label="Hòa" value="--" />
         <button
           type="button"
           onClick={onToggleTrack}
           aria-pressed={isTracked}
-          className={`inline-flex flex-1 items-center justify-center rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+          className={`col-span-2 mt-1 min-h-20 rounded-xl border px-3 text-base font-bold transition-colors sm:text-xl ${
             isTracked
-              ? 'bg-teal-700 text-white hover:bg-teal-800'
-              : 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
+              ? 'border-cyan-300 bg-cyan-400/15 text-cyan-200 hover:bg-cyan-400/25'
+              : 'border-slate-600 bg-slate-900/40 text-white hover:bg-slate-800'
           }`}
         >
-          Mức Theo Dõi 🖤
+          {isTracked ? '⭐ Theo dõi' : '☆ Theo dõi'}
         </button>
       </div>
     </li>
