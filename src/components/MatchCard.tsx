@@ -7,10 +7,10 @@ interface MatchCardProps {
   match: BaselineMatch;
   isTracked: boolean;
   onToggleTrack: () => void;
-  onOpenH2H: () => void;
+  onOpenH2H?: () => void;
 }
 
-// Rút gọn tên giải đấu (VD: ITALIAN SERIE A -> Serie A)
+// 1. Hàm rút gọn tên giải đấu (VD: ITALIAN SERIE A -> Serie A)
 function formatShortLeague(name?: string): string {
   if (!name) return 'BÓNG ĐÁ';
   return name
@@ -22,6 +22,7 @@ function formatShortLeague(name?: string): string {
     .trim();
 }
 
+// 2. Giữ nguyên 100% hàm formatOdds & formatLine gốc của bạn
 function formatOdds(value: number | null | undefined): string {
   return value === null || value === undefined ? '--' : value.toFixed(2);
 }
@@ -32,7 +33,7 @@ function formatLine(value: number | null | undefined, side?: 'home' | 'away'): s
   return line > 0 ? `+${line.toFixed(2)}` : line.toFixed(2);
 }
 
-// Format số xG tròn như 2 -> "2.0", 1.85 -> "1.85"
+// 3. Format xG dạng số tròn (2 -> "2.0")
 function formatXG(val: number | string | null | undefined): string {
   if (val === null || val === undefined || val === '') return '--';
   const num = typeof val === 'number' ? val : parseFloat(String(val));
@@ -43,7 +44,7 @@ function formatXG(val: number | string | null | undefined): string {
   return String(val);
 }
 
-// Format Poisson hiển thị % chuẩn xác
+// 4. Format Poisson hiển thị % chuẩn xác
 function formatPoisson(val: number | string | null | undefined): string {
   if (val === null || val === undefined || val === '') return '--';
   const str = String(val).trim();
@@ -56,6 +57,7 @@ function formatPoisson(val: number | string | null | undefined): string {
   return `${num}%`;
 }
 
+// 5. Giữ nguyên 100% Sub-component OddsCell gốc
 interface OddsCellProps {
   label: string;
   value: string;
@@ -70,6 +72,7 @@ function OddsCell({ label, value }: OddsCellProps) {
   );
 }
 
+// 6. Giữ nguyên 100% Sub-component Team gốc
 interface TeamProps {
   name: string;
   logo?: string | null;
@@ -84,7 +87,7 @@ function Team({ name, logo }: TeamProps) {
   );
 }
 
-export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }: MatchCardProps) {
+export function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }: MatchCardProps) {
   // State quản lý việc mở Popup Modal (H2H, xG Baseline, Poisson)
   const [activeModal, setActiveModal] = useState<'h2h' | 'xg' | 'poisson' | null>(null);
 
@@ -94,23 +97,36 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
 
   const shortLeague = formatShortLeague(match?.league_name);
 
-  // Lấy dữ liệu H2H 5 trận từ Supabase/Payload
-  const h2hHistory = payload?.h2h_history || (match as any)?.h2h_history || [];
+  // DỮ LIỆU H2H THẬT: Sắp xếp từ lần đối đầu gần nhất xuống dần & lấy tối đa 5 trận
+  const rawH2H = payload?.h2h_history || (match as any)?.h2h_history || [];
+  const sortedH2H = [...rawH2H]
+    .sort((a: any, b: any) => {
+      const parseDate = (d?: string) => {
+        if (!d) return 0;
+        if (d.includes('/')) {
+          const parts = d.split('/');
+          if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime();
+        }
+        return new Date(d).getTime() || 0;
+      };
+      return parseDate(b.date) - parseDate(a.date);
+    })
+    .slice(0, 5);
 
-  // Lấy dữ liệu xG Baseline (định dạng 2 -> 2.0)
+  // Dữ liệu xG (2 -> "2.0") & Poisson (%)
   const xgHome = formatXG(payload?.xg_home_baseline ?? (match as any)?.xg_home_baseline ?? 2);
   const xgAway = formatXG(payload?.xg_away_baseline ?? (match as any)?.xg_away_baseline ?? 1.32);
 
-  // Lấy dữ liệu Poisson (% chuẩn xác)
   const poissonHome = formatPoisson(payload?.poisson_prob_home ?? (match as any)?.poisson_prob_home ?? '45%');
   const poissonDraw = formatPoisson(payload?.poisson_prob_draw ?? (match as any)?.poisson_prob_draw ?? '27%');
   const poissonAway = formatPoisson(payload?.poisson_prob_away ?? (match as any)?.poisson_prob_away ?? '28%');
 
   return (
     <>
+      {/* KHUNG THẺ TRẬN ĐẤU */}
       <li className={`overflow-hidden rounded-2xl border ${isTracked ? 'border-amber-500/80 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'border-slate-600'} bg-[#1b202c] text-white shadow-lg transition duration-200 hover:-translate-y-0.5 hover:border-slate-500 list-none mb-3 relative`}>
         
-        {/* HEADER: Tên giải đấu ngắn gọn & Icon Ngôi Sao ở góc phải */}
+        {/* HEADER: Tên giải ngắn gọn & Nút Ngôi Sao ở góc trên bên phải */}
         <header className="flex items-center justify-between gap-3 border-b border-slate-600 px-4 py-3 sm:px-5">
           <div className="flex items-center gap-2 min-w-0">
             {isTracked && (
@@ -135,10 +151,10 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
           </button>
         </header>
 
-        {/* THÂN THẺ CẦU THỦ & BẢNG KÈO GRID */}
+        {/* THÂN THẺ & BẢNG KÈO GRID */}
         <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(74px,0.9fr))] gap-2 px-3 py-4 sm:grid-cols-[minmax(190px,1.2fr)_repeat(3,minmax(110px,0.8fr))] sm:gap-3 sm:px-5 sm:py-5">
           
-          {/* HÀNG 0: Ngày giờ đá đặt TRÊN CỘT TÊN ĐỘI BÓNG + Tiêu đề 3 Cột Kèo */}
+          {/* HÀNG 0: Ngày Giờ thi đấu đặt TRÊN CỘT TÊN ĐỘI BÓNG + Tiêu đề 3 Cột Kèo */}
           <div className="flex items-center gap-1 text-cyan-300 font-bold text-xs sm:text-sm">
             <span className="text-[10px] text-slate-400">🕒</span>
             <time className="tabular-nums truncate">{formatKickoffDateTime(match.match_date)}</time>
@@ -159,9 +175,12 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
           <OddsCell label={formatLine(payload?.handicap_opening, 'away')} value={formatOdds(payload?.odds_away_opening)} />
           <OddsCell label={`u ${formatLine(payload?.over_under_opening)}`} value={formatOdds(payload?.odds_under_opening)} />
 
-          {/* HÀNG 3: 4 Nút Chức Năng (Xem H2H | Đội Khách 1X2 | xG Base | Poisson) */}
+          {/* HÀNG 3: 4 Nút Chức Năng (Nút H2H bung Modal đồng bộ) */}
           <button
-            onClick={() => setActiveModal('h2h')}
+            onClick={() => {
+              if (onOpenH2H) onOpenH2H();
+              else setActiveModal('h2h');
+            }}
             type="button"
             className="flex min-h-16 items-center justify-center gap-1.5 rounded-xl border border-slate-600/80 bg-slate-800 hover:bg-slate-700 px-2 text-xs font-bold text-slate-200 active:scale-95 transition-all cursor-pointer"
           >
@@ -198,10 +217,10 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
         </div>
       </li>
 
-      {/* ================= THIẾT KẾ ĐỒNG BỘ 3 MODAL POPUPS ================= */}
+      {/* ================= KHUNG MODAL POPUPS ĐỒNG BỘ NỔI BẬT ================= */}
       {activeModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#1b202c] border border-slate-600 rounded-2xl w-full max-w-sm p-5 text-white shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-[#1b202c] border border-slate-600 rounded-2xl w-full max-w-sm p-4 text-white shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
             
             {/* Nút Đóng Popup */}
             <button
@@ -212,29 +231,33 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
               <X className="h-5 w-5" />
             </button>
 
-            {/* POPUP MODAL H2H (ĐỌC ĐỦ 5 TRẬN ĐỐI ĐẦU THẬT) */}
+            {/* 1. POPUP MODAL H2H (HIỂN THỊ ĐỦ 5 TRẬN, CHỮ NHỎ GỌN TRUNCAE ĐẸP NHƯ ẢNH) */}
             {activeModal === 'h2h' && (
               <div>
-                <h3 className="font-bold text-base text-cyan-400 mb-1 flex items-center gap-1.5">
-                  <Eye className="h-5 w-5" /> Lịch Sử Đối Đầu
+                <h3 className="font-bold text-sm sm:text-base text-cyan-400 mb-1 flex items-center gap-1.5">
+                  <Eye className="h-4 w-4" /> Lịch Sử Đối Đầu
                 </h3>
-                <p className="text-xs text-slate-400 mb-3">{match.home_team} vs {match.away_team}</p>
+                <p className="text-xs text-slate-400 mb-2.5 truncate">{match.home_team} vs {match.away_team}</p>
                 
-                {h2hHistory.length === 0 ? (
-                  <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-xl text-center my-3">
-                    <p className="text-sm font-semibold text-slate-300">Chưa có lịch sử đối đầu</p>
+                {sortedH2H.length === 0 ? (
+                  <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-xl text-center my-2">
+                    <p className="text-xs sm:text-sm font-semibold text-slate-300">Chưa có lịch sử đối đầu</p>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-[11px] text-slate-400 mb-2 font-medium">
-                      {h2hHistory.length >= 5 ? '5 trận đối đầu gần nhất:' : `Lịch sử đối đầu (${h2hHistory.length} trận gần nhất):`}
+                    <p className="text-[10px] text-slate-400 mb-1.5 font-medium">
+                      {sortedH2H.length >= 5 ? '5 trận đối đầu gần nhất (Mới ➔ Cũ):' : `Lịch sử đối đầu (${sortedH2H.length} trận gần nhất):`}
                     </p>
-                    <div className="space-y-1.5 text-xs max-h-60 overflow-y-auto pr-1">
-                      {h2hHistory.slice(0, 5).map((item: any, idx: number) => (
-                        <div key={idx} className="bg-slate-800/80 p-2.5 rounded-lg flex justify-between items-center border border-slate-700/50">
-                          <span className="text-slate-400 text-[11px]">{item.date || '2026'}</span>
-                          <span className="font-semibold text-slate-200 text-xs">{item.home || item.home_team} - {item.away || item.away_team}</span>
-                          <span className="font-extrabold text-cyan-400 bg-slate-900 px-2 py-0.5 rounded text-xs">{item.score || '1 - 0'}</span>
+                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
+                      {sortedH2H.map((item: any, idx: number) => (
+                        <div key={idx} className="bg-slate-800/80 p-2 rounded-lg flex items-center justify-between border border-slate-700/50 gap-1.5">
+                          <span className="text-slate-400 text-[10px] tabular-nums shrink-0">{item.date || '2026'}</span>
+                          <span className="font-semibold text-slate-200 text-[11px] truncate max-w-[150px]">
+                            {item.home || item.home_team} - {item.away || item.away_team}
+                          </span>
+                          <span className="font-extrabold text-cyan-400 bg-slate-900 px-1.5 py-0.5 rounded text-[10px] shrink-0">
+                            {item.score || '1 - 0'}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -243,16 +266,16 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
               </div>
             )}
 
-            {/* POPUP MODAL xG BASELINE (ĐỊNH DẠNG CHUẨN 2.0) */}
+            {/* 2. POPUP MODAL xG BASELINE (HIỂN THỊ 2.0) */}
             {activeModal === 'xg' && (
               <div className="text-center">
                 <h3 className="font-bold text-base text-cyan-400 mb-1 flex items-center justify-center gap-1.5">
                   <BarChart2 className="h-5 w-5" /> Phân Tích xG Baseline
                 </h3>
-                <p className="text-xs text-slate-400 mb-4">{match.home_team} vs {match.away_team}</p>
+                <p className="text-xs text-slate-400 mb-3 truncate">{match.home_team} vs {match.away_team}</p>
 
-                <div className="bg-slate-900/90 border border-cyan-800/60 p-4 rounded-xl my-3">
-                  <p className="text-[11px] text-slate-400 uppercase font-semibold mb-1">Kỳ vọng bàn thắng Baseline</p>
+                <div className="bg-slate-900/90 border border-cyan-800/60 p-4 rounded-xl my-2">
+                  <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Kỳ vọng bàn thắng Baseline</p>
                   <p className="text-3xl font-black text-cyan-400 tracking-wider">
                     {xgHome} - {xgAway}
                   </p>
@@ -260,28 +283,28 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
               </div>
             )}
 
-            {/* POPUP MODAL POISSON (ĐẦY ĐỦ TỶ LỆ %) */}
+            {/* 3. POPUP MODAL POISSON (HIỂN THỊ CHỈ SỐ % ĐẦY ĐỦ) */}
             {activeModal === 'poisson' && (
               <div className="text-center">
                 <h3 className="font-bold text-base text-emerald-400 mb-1 flex items-center justify-center gap-1.5">
                   <Dices className="h-5 w-5" /> Phân Phối Xác Suất Poisson
                 </h3>
-                <p className="text-xs text-slate-400 mb-4">{match.home_team} vs {match.away_team}</p>
+                <p className="text-xs text-slate-400 mb-3 truncate">{match.home_team} vs {match.away_team}</p>
 
-                <div className="bg-slate-900/90 border border-emerald-800/60 p-4 rounded-xl my-3">
-                  <p className="text-[11px] text-slate-400 uppercase font-semibold mb-3">Xác suất Thắng - Hòa - Thua (1X2)</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-slate-800 p-2.5 rounded-lg border border-slate-700">
-                      <p className="text-[10px] text-slate-400 mb-0.5">Chủ Thắng</p>
-                      <p className="text-lg font-black text-emerald-400">{poissonHome}</p>
+                <div className="bg-slate-900/90 border border-emerald-800/60 p-3.5 rounded-xl my-2">
+                  <p className="text-[10px] text-slate-400 uppercase font-semibold mb-2.5">Xác suất Thắng - Hòa - Thua (1X2)</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div className="bg-slate-800 p-2 rounded-lg border border-slate-700">
+                      <p className="text-[9px] text-slate-400 mb-0.5">Chủ Thắng</p>
+                      <p className="text-base font-black text-emerald-400">{poissonHome}</p>
                     </div>
-                    <div className="bg-slate-800 p-2.5 rounded-lg border border-slate-700">
-                      <p className="text-[10px] text-slate-400 mb-0.5">Cửa Hòa</p>
-                      <p className="text-lg font-black text-amber-400">{poissonDraw}</p>
+                    <div className="bg-slate-800 p-2 rounded-lg border border-slate-700">
+                      <p className="text-[9px] text-slate-400 mb-0.5">Cửa Hòa</p>
+                      <p className="text-base font-black text-amber-400">{poissonDraw}</p>
                     </div>
-                    <div className="bg-slate-800 p-2.5 rounded-lg border border-slate-700">
-                      <p className="text-[10px] text-slate-400 mb-0.5">Khách Thắng</p>
-                      <p className="text-lg font-black text-rose-400">{poissonAway}</p>
+                    <div className="bg-slate-800 p-2 rounded-lg border border-slate-700">
+                      <p className="text-[9px] text-slate-400 mb-0.5">Khách Thắng</p>
+                      <p className="text-base font-black text-rose-400">{poissonAway}</p>
                     </div>
                   </div>
                 </div>
@@ -291,7 +314,7 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
             <button
               onClick={() => setActiveModal(null)}
               type="button"
-              className="w-full mt-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-200 transition-colors cursor-pointer"
+              className="w-full mt-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-200 transition-colors cursor-pointer"
             >
               Đóng lại
             </button>
@@ -301,3 +324,5 @@ export default function MatchCard({ match, isTracked, onToggleTrack, onOpenH2H }
     </>
   );
 }
+
+export default MatchCard;
