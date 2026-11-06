@@ -47,6 +47,22 @@ export interface BaselinePayload {
   h2h_history?: H2HEntry[] | null;
 }
 
+export interface TrackingMovement {
+  match_id: string;
+  giai_dau: string;
+  tran_dau: string;
+  handicap_opening: number | null;
+  handicap_current_t3h: number | null;
+  odds_home_t3h: number | null;
+  odds_away_t3h: number | null;
+  overunder_opening: number | null;
+  overunder_current_t3h: number | null;
+  expected_edge_t3h: number | null;
+  smart_money_signal: string | null;
+  trap_odds_warning: boolean;
+  update_timestamp_t3h: string;
+}
+
 export interface BaselineMatch {
   match_id: string;
   match_date: string;

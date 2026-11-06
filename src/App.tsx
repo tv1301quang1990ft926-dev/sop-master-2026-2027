@@ -4,6 +4,7 @@ import BottomNav from '@/components/BottomNav';
 import H2HModal from '@/components/H2HModal';
 import MatchBoard from '@/components/MatchBoard';
 import PhasePlaceholderView from '@/components/PhasePlaceholderView';
+import TrackingBoard from '@/components/TrackingBoard';
 import { PHASES } from '@/constants/phases';
 import { fetchTodayMatches } from '@/services/matches';
 import type { BaselineMatch, LoadStatus, PhaseId } from '@/types';
@@ -93,7 +94,9 @@ function App() {
     <div className="min-h-screen bg-slate-100 font-sans text-slate-900">
       <AppHeader />
       <main className="mx-auto max-w-4xl px-3 py-6 pb-28 sm:px-5">
-        {activePhase === 'baseline' ? (
+        {activePhase === 'tracking' ? (
+          <TrackingBoard />
+        ) : activePhase === 'baseline' ? (
           <MatchBoard
             matches={orderedMatches}
             status={status}
