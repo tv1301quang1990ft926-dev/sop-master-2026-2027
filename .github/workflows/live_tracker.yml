@@ -1,0 +1,33 @@
+name: SOP Master Stage 2 Live Tracker
+
+on:
+  schedule:
+    # Chạy mỗi 30 phút một lần (vào phút thứ 00 và phút thứ 30 hàng giờ)
+    - cron: '0,30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run-live-tracker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests supabase curl_cffi
+
+      - name: Execute Live Tracker Engine (GĐ2)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python scripts/live_tracker.py
