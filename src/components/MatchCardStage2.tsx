@@ -1,131 +1,251 @@
-import { useState } from 'react';
-import { Activity, AlertTriangle, DollarSign, X } from 'lucide-react';
-import type { TrackingMovement } from '@/types';
-import { formatKickoffDateTime } from '@/utils/dates';
+import React, { useState } from 'react';
+import { AlertTriangle, Activity, DollarSign, X, ShieldAlert, Zap, Clock } from 'lucide-react';
 
-type AnalysisType = 'trap' | 'movement' | 'edge';
+export interface TrackingMatchItem {
+  match_id: string;
+  giai_dau?: string;
+  league_name?: string;
+  tran_dau?: string;
+  home_team?: string;
+  away_team?: string;
+  home_logo?: string;
+  away_logo?: string;
+  kickoff_time?: string;
+  gio_thi_dau_gmt7?: string;
+  
+  // Tỷ lệ 1X2 Châu Âu
+  odds_home_1x2?: number;
+  odds_draw_1x2?: number;
+  odds_away_1x2?: number;
+
+  // Tỷ lệ Baseline GĐ1
+  handicap_opening?: number;
+  odds_home_opening?: number;
+  odds_away_opening?: number;
+  overunder_opening?: number;
+  odds_over_opening?: number;
+  odds_under_opening?: number;
+
+  // Biến động Live T-3h GĐ2
+  handicap_current_t3h?: number;
+  odds_home_t3h?: number;
+  odds_away_t3h?: number;
+  overunder_current_t3h?: number;
+  odds_over_t3h?: number;
+  odds_under_t3h?: number;
+
+  // Tín hiệu GĐ2
+  expected_edge_t3h?: number;
+  smart_money_signal?: string;
+  trap_odds_warning?: string;
+}
 
 interface MatchCardStage2Props {
-  movement: TrackingMovement;
+  match: TrackingMatchItem;
 }
 
-function formatNumber(value: number | null, suffix = ''): string {
-  return value === null ? '--' : `${value.toFixed(2)}${suffix}`;
+function formatOdds(val?: number | null): string {
+  return val === null || val === undefined ? '--' : val.toFixed(2);
 }
 
-function formatLine(value: number | null): string {
-  if (value === null) return '--';
-  return value > 0 ? `+${value.toFixed(2)}` : value.toFixed(2);
+function formatHandicap(val?: number | null, isAway: boolean = false): string {
+  if (val === null || val === undefined) return '--';
+  const finalVal = isAway ? -val : val;
+  return finalVal > 0 ? `+${finalVal.toFixed(2)}` : finalVal.toFixed(2);
 }
 
-function formatMovementTimestamp(value: string): string {
-  return new Intl.DateTimeFormat('vi-VN', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    hour: '2-digit',
-    minute: '2-digit',
-    day: '2-digit',
-    month: '2-digit',
-    hour12: false,
-  }).format(new Date(value));
-}
+export default function MatchCardStage2({ match }: MatchCardStage2Props) {
+  const [activeModal, setActiveModal] = useState<'TRAP_ODDS' | 'ODDS_MOVEMENT' | 'SMART_MONEY' | null>(null);
 
-interface OddsCellProps {
-  label: string;
-  value: string;
-}
+  const league = match.giai_dau || match.league_name || 'BÓNG ĐÁ TOP 8';
+  const homeName = match.home_team || match.tran_dau?.split(' vs ')[0] || 'Đội nhà';
+  const awayName = match.away_team || match.tran_dau?.split(' vs ')[1] || 'Đội khách';
+  const kickoff = match.kickoff_time || match.gio_thi_dau_gmt7 || 'T-3h Live';
 
-function OddsCell({ label, value }: OddsCellProps) {
+  const isTrap = match.trap_odds_warning?.toUpperCase().includes('BẪY') || match.trap_odds_warning?.toUpperCase().includes('BAY');
+  const hasSmartMoney = Boolean(match.smart_money_signal && match.smart_money_signal !== 'NEUTRAL' && match.smart_money_signal !== 'Không');
+  const edgeVal = match.expected_edge_t3h || 0.0;
+
+  const currentHcap = match.handicap_current_t3h ?? match.handicap_opening ?? 0;
+  const currentOU = match.overunder_current_t3h ?? match.overunder_opening ?? 2.5;
+
   return (
-    <div className="flex min-h-20 flex-col justify-center rounded-xl border border-slate-600/80 bg-slate-900/40 px-2 py-2 text-center">
-      <span className="text-xs leading-tight text-slate-300">{label}</span>
-      <strong className="mt-1 text-2xl font-bold tabular-nums text-white">{value}</strong>
-    </div>
-  );
-}
+    <div className={`overflow-hidden rounded-2xl border ${
+      isTrap ? 'border-rose-500/80 bg-[#1b202c] shadow-[0_0_15px_rgba(244,63,94,0.2)]' : 'border-slate-700 bg-[#1b202c]'
+    } text-white shadow-lg p-4 mb-4 relative font-sans`}>
+      
+      {/* HEADER TRẬN ĐẤU (GIỮ 100% GĐ1) */}
+      <div className="flex items-center justify-between border-b border-slate-700/80 pb-2.5 mb-3 text-xs">
+        <span className="font-bold text-slate-200 uppercase tracking-wider text-sm sm:text-base">
+          {league}
+        </span>
+        <div className="flex items-center gap-1.5 font-mono text-cyan-400 font-bold text-xs sm:text-sm">
+          <Clock className="h-3.5 w-3.5 text-slate-400" />
+          <span>{kickoff}</span>
+        </div>
+      </div>
 
-function Team({ name }: { name: string }) {
-  return <p className="truncate py-1 text-lg font-bold text-white sm:text-2xl">{name}</p>;
-}
+      {/* KHUNG GRID 4 CỘT CHUẨN 100% GĐ1 */}
+      <div className="grid grid-cols-[minmax(120px,1.2fr)_repeat(3,minmax(75px,1fr))] gap-2 items-center text-center text-xs">
+        {/* Tên Cột */}
+        <div className="text-left font-bold text-slate-400">Đội bóng</div>
+        <div className="font-medium text-slate-300">Toàn Trận - 1X2</div>
+        <div className="font-medium text-slate-300">Toàn Trận - Chấp</div>
+        <div className="font-medium text-slate-300">Toàn Trận - T/X</div>
 
-function AnalysisModal({ type, movement, onClose }: { type: AnalysisType; movement: TrackingMovement; onClose: () => void }) {
-  const title = type === 'trap' ? 'Kiểm Bẫy Odds' : type === 'movement' ? 'Biến Động Odds' : 'Dòng Tiền & EV Edge';
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" className="w-full max-w-lg rounded-2xl border border-slate-600 bg-[#202735] p-5 text-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">{movement.giai_dau}</p>
-            <h2 className="mt-1 text-xl font-bold">{title}</h2>
-            <p className="mt-1 text-sm text-slate-300">{movement.tran_dau}</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Đóng" className="rounded-full p-2 text-slate-300 hover:bg-white/10 hover:text-white"><X className="h-5 w-5" /></button>
+        {/* HÀNG 1: ĐỘI NHÀ */}
+        <div className="flex items-center gap-2 text-left py-1.5 min-w-0">
+          {match.home_logo ? (
+            <img src={match.home_logo} alt="" className="h-6 w-6 object-contain shrink-0" />
+          ) : (
+            <div className="h-6 w-6 rounded-full bg-slate-700 shrink-0 flex items-center justify-center font-bold text-[10px]">H</div>
+          )}
+          <span className="font-bold text-sm text-white truncate">{homeName}</span>
+        </div>
+        {/* 1X2 Home */}
+        <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-2">
+          <span className="text-[10px] text-slate-400 block">Đội nhà</span>
+          <span className="font-bold text-sm text-white">{formatOdds(match.odds_home_1x2 || 1.85)}</span>
+        </div>
+        {/* Handicap Home */}
+        <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-2">
+          <span className="text-[10px] text-slate-400 block">{formatHandicap(currentHcap, false)}</span>
+          <span className="font-bold text-sm text-white">{formatOdds(match.odds_home_t3h || match.odds_home_opening || 0.92)}</span>
+        </div>
+        {/* Over/Under Over */}
+        <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-2">
+          <span className="text-[10px] text-slate-400 block">o {currentOU}</span>
+          <span className="font-bold text-sm text-white">{formatOdds(match.odds_over_t3h || match.odds_over_opening || 0.88)}</span>
         </div>
 
-        {type === 'trap' && (
-          <div className="mt-5 space-y-3">
-            <div className={`rounded-xl border p-4 ${movement.trap_odds_warning ? 'border-rose-400/50 bg-rose-400/10' : 'border-emerald-400/50 bg-emerald-400/10'}`}>
-              <p className="text-sm font-semibold">{movement.trap_odds_warning ? '⚠️ Bẫy Odds được phát hiện' : 'Không phát hiện bẫy Odds'}</p>
-              <p className="mt-1 text-sm text-slate-300">{movement.trap_odds_warning ? 'Dấu hiệu đè giá ăn nhưng không tăng mức chấp. Gắn cờ Rule 5 / E-08.' : 'Biến động hiện tại chưa tạo tín hiệu bất thường theo Rule 5.'}</p>
-            </div>
-            <p className="text-sm leading-relaxed text-slate-300">Khuyến nghị: đưa trận vào vùng <strong className="text-rose-300">Quarantine</strong>, không sử dụng để chốt kèo cho tới khi có dữ liệu xác nhận.</p>
-          </div>
-        )}
-
-        {type === 'movement' && (
-          <div className="mt-5 overflow-hidden rounded-xl border border-slate-600">
-            <div className="grid grid-cols-3 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-300"><span>Thị trường</span><span>Opening T-24h</span><span>Live T-3h</span></div>
-            <div className="grid grid-cols-3 border-t border-slate-600 px-3 py-3 text-sm"><span>Cược chấp</span><strong>{formatLine(movement.handicap_opening)}</strong><strong className="text-cyan-300">{formatLine(movement.handicap_current_t3h)}</strong></div>
-            <div className="grid grid-cols-3 border-t border-slate-600 px-3 py-3 text-sm"><span>Tài/Xỉu</span><strong>{formatNumber(movement.overunder_opening)}</strong><strong className="text-cyan-300">{formatNumber(movement.overunder_current_t3h)}</strong></div>
-          </div>
-        )}
-
-        {type === 'edge' && (
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 p-4"><p className="text-xs text-slate-300">Smart Money</p><p className="mt-1 text-xl font-bold text-emerald-300">{movement.smart_money_signal || 'Chưa xác định'}</p></div>
-            <div className="rounded-xl border border-cyan-400/40 bg-cyan-400/10 p-4"><p className="text-xs text-slate-300">Expected Edge</p><p className="mt-1 text-2xl font-bold text-cyan-300">{formatNumber(movement.expected_edge_t3h, '%')}</p></div>
-          </div>
-        )}
-
-        <p className="mt-5 text-right text-xs text-slate-500">Cập nhật {formatMovementTimestamp(movement.update_timestamp_t3h)}</p>
+        {/* HÀNG 2: ĐỘI KHÁCH */}
+        <div className="flex items-center gap-2 text-left py-1.5 min-w-0">
+          {match.away_logo ? (
+            <img src={match.away_logo} alt="" className="h-6 w-6 object-contain shrink-0" />
+          ) : (
+            <div className="h-6 w-6 rounded-full bg-slate-700 shrink-0 flex items-center justify-center font-bold text-[10px]">A</div>
+          )}
+          <span className="font-bold text-sm text-white truncate">{awayName}</span>
+        </div>
+        {/* 1X2 Away */}
+        <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-2">
+          <span className="text-[10px] text-slate-400 block">Đội khách</span>
+          <span className="font-bold text-sm text-white">{formatOdds(match.odds_away_1x2 || 4.20)}</span>
+        </div>
+        {/* Handicap Away (ĐẢO DẤU CHUẨN) */}
+        <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-2">
+          <span className="text-[10px] text-slate-400 block">{formatHandicap(currentHcap, true)}</span>
+          <span className="font-bold text-sm text-white">{formatOdds(match.odds_away_t3h || match.odds_away_opening || 0.90)}</span>
+        </div>
+        {/* Over/Under Under */}
+        <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-2">
+          <span className="text-[10px] text-slate-400 block">u {currentOU}</span>
+          <span className="font-bold text-sm text-white">{formatOdds(match.odds_under_t3h || match.odds_under_opening || 0.95)}</span>
+        </div>
       </div>
-    </div>
-  );
-}
 
-export default function MatchCardStage2({ movement }: MatchCardStage2Props) {
-  const [analysisType, setAnalysisType] = useState<AnalysisType | null>(null);
-  const [homeTeam, awayTeam] = movement.tran_dau.split(' - ').length === 2 ? movement.tran_dau.split(' - ') : [movement.tran_dau, ''];
-  const matchDate = movement.update_timestamp_t3h;
-
-  return (
-    <li className="overflow-hidden rounded-2xl border border-slate-600 bg-[#1b202c] text-white shadow-lg transition duration-200 hover:-translate-y-0.5 hover:border-slate-500 hover:shadow-xl">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-600 px-4 py-4 sm:px-5">
-        <h3 className="min-w-0 truncate text-base font-bold uppercase tracking-wide text-white sm:text-lg">{movement.giai_dau}</h3>
-        <time className="shrink-0 text-sm font-semibold tabular-nums text-cyan-300 sm:text-base">{formatKickoffDateTime(matchDate)}</time>
-      </header>
-      <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(74px,0.9fr))] gap-2 px-3 py-4 sm:grid-cols-[minmax(190px,1.2fr)_repeat(3,minmax(110px,0.8fr))] sm:gap-3 sm:px-5 sm:py-5">
-        <div />
-        <p className="text-center text-xs font-medium leading-tight text-slate-300 sm:text-sm">Toàn Trận - 1X2<br />(Châu Âu)</p>
-        <p className="text-center text-xs font-medium leading-tight text-slate-300 sm:text-sm">Toàn Trận -<br />Cược Chấp</p>
-        <p className="text-center text-xs font-medium leading-tight text-slate-300 sm:text-sm">Toàn Trận -<br />Tài/Xỉu</p>
-        <Team name={homeTeam} />
-        <OddsCell label="Đội nhà" value={formatNumber(movement.odds_home_t3h)} />
-        <OddsCell label={formatLine(movement.handicap_current_t3h)} value={formatNumber(movement.odds_home_t3h)} />
-        <OddsCell label={`o ${formatNumber(movement.overunder_current_t3h)}`} value={formatNumber(movement.odds_home_t3h)} />
-        <Team name={awayTeam} />
-        <OddsCell label="Đội khách" value={formatNumber(movement.odds_away_t3h)} />
-        <OddsCell label={formatLine(movement.handicap_current_t3h)} value={formatNumber(movement.odds_away_t3h)} />
-        <OddsCell label={`u ${formatNumber(movement.overunder_current_t3h)}`} value={formatNumber(movement.odds_away_t3h)} />
-      </div>
-      <div className="grid grid-cols-1 gap-2 border-t border-slate-600 p-3 sm:grid-cols-3 sm:p-5">
-        <button type="button" onClick={() => setAnalysisType('trap')} className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${movement.trap_odds_warning ? 'border-rose-400 bg-rose-400/15 text-rose-200 hover:bg-rose-400/25' : 'border-amber-400/60 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20'}`}>
-          <AlertTriangle className="h-4 w-4" />
-          {movement.trap_odds_warning ? '⚠️ Bẫy Odds!' : 'Kiểm Bẫy Odds'}
+      {/* ========================================================================= */}
+      {/* 🎯 BỘ 3 NÚT BẤM GĐ2 XẾP TRÊN 1 HÀNG NGANG CHUẨN (GRID 3 CỘT) */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-700/80">
+        <button
+          onClick={() => setActiveModal('TRAP_ODDS')}
+          className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-center transition cursor-pointer ${
+            isTrap ? 'bg-rose-950/80 border-rose-500/80 text-rose-300' : 'bg-slate-800/90 border-slate-700 text-amber-400 hover:bg-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-1">
+            <AlertTriangle className={`h-3.5 w-3.5 ${isTrap ? 'animate-bounce text-rose-400' : 'text-amber-400'}`} />
+            <span className="text-xs font-bold">{isTrap ? 'Bẫy Odds!' : 'Kiểm Bẫy Odds'}</span>
+          </div>
         </button>
-        <button type="button" onClick={() => setAnalysisType('movement')} className="flex items-center justify-center gap-2 rounded-xl border border-cyan-400/60 bg-cyan-400/10 px-3 py-3 text-sm font-bold text-cyan-200 hover:bg-cyan-400/20"><Activity className="h-4 w-4" />Biến Động Odds</button>
-        <button type="button" onClick={() => setAnalysisType('edge')} className="flex items-center justify-center gap-2 rounded-xl border border-emerald-400/60 bg-emerald-400/10 px-3 py-3 text-sm font-bold text-emerald-200 hover:bg-emerald-400/20"><DollarSign className="h-4 w-4" />Dòng Tiền &amp; EV Edge</button>
+
+        <button
+          onClick={() => setActiveModal('ODDS_MOVEMENT')}
+          className="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-cyan-500/40 bg-slate-800/90 hover:bg-cyan-950/60 text-cyan-300 transition cursor-pointer"
+        >
+          <div className="flex items-center gap-1">
+            <Activity className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="text-xs font-bold">Biến Động Odds</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setActiveModal('SMART_MONEY')}
+          className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-center transition cursor-pointer ${
+            hasSmartMoney ? 'bg-emerald-950/80 border-emerald-500/80 text-emerald-300' : 'bg-slate-800/90 border-slate-700 text-emerald-400 hover:bg-slate-700'
+          }`}
+        >
+          <div className="flex items-center gap-1">
+            <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="text-xs font-bold">Dòng Tiền & EV</span>
+          </div>
+        </button>
       </div>
-      {analysisType && <AnalysisModal type={analysisType} movement={movement} onClose={() => setAnalysisType(null)} />}
-    </li>
+
+      {/* POPUP MODAL CHUẨN BẢO MẬT IP MOAT */}
+      {activeModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#1b202c] border border-slate-600 rounded-2xl w-full max-w-sm p-5 text-white shadow-2xl relative">
+            <button onClick={() => setActiveModal(null)} className="absolute top-3 right-3 text-slate-400 hover:text-white">
+              <X className="h-5 w-5" />
+            </button>
+
+            {activeModal === 'TRAP_ODDS' && (
+              <div className="space-y-3">
+                <h3 className="font-bold text-base text-rose-400 flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5" /> Kiểm Duyệt Bẫy Odds (Rule 5)
+                </h3>
+                <p className="text-xs text-slate-400">{homeName} vs {awayName}</p>
+
+                <div className={`p-3.5 rounded-xl border ${isTrap ? 'bg-rose-950/90 border-rose-500 text-rose-200' : 'bg-slate-900 border-slate-700 text-emerald-300'}`}>
+                  <p className="font-bold text-sm mb-1">{isTrap ? '⚠️ CẢNH BÁO BẪY ODDS NHÀ CÁI' : 'AN TOÀN: KHÔNG CÓ BẪY'}</p>
+                  <p className="text-xs leading-relaxed text-slate-300">
+                    {isTrap 
+                      ? 'Nhà cái có dấu hiệu đè giá bất thường — Khuyên không nên cược cửa Trên (Kích hoạt Rule 5 Quarantine).'
+                      : 'Tỷ lệ biến động kèo tự nhiên theo khối lượng giao dịch thị trường.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {activeModal === 'ODDS_MOVEMENT' && (
+              <div className="space-y-3">
+                <h3 className="font-bold text-base text-cyan-400 flex items-center gap-2">
+                  <Activity className="h-5 w-5" /> So Sánh Biến Động Odds (T-3h vs T-24h)
+                </h3>
+                <p className="text-xs text-slate-400">{homeName} vs {awayName}</p>
+                <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl space-y-2 text-xs">
+                  <div className="flex justify-between"><span>Kèo Chấp Mở Cửa (T-24h):</span><span className="font-bold">{match.handicap_opening ?? 0}</span></div>
+                  <div className="flex justify-between"><span>Kèo Chấp Hiện Tại (T-3h):</span><span className="font-bold text-cyan-400">{currentHcap}</span></div>
+                  <div className="flex justify-between"><span>Tài Xỉu Mở Cửa (T-24h):</span><span className="font-bold">{match.overunder_opening ?? 2.5}</span></div>
+                  <div className="flex justify-between"><span>Tài Xỉu Hiện Tại (T-3h):</span><span className="font-bold text-cyan-400">{currentOU}</span></div>
+                </div>
+              </div>
+            )}
+
+            {activeModal === 'SMART_MONEY' && (
+              <div className="space-y-3">
+                <h3 className="font-bold text-base text-emerald-400 flex items-center gap-2">
+                  <Zap className="h-5 w-5" /> Dòng Tiền Smart Money & EV Edge
+                </h3>
+                <p className="text-xs text-slate-400">{homeName} vs {awayName}</p>
+                <div className="bg-slate-900 border border-emerald-800/60 p-3.5 rounded-xl space-y-2 text-xs">
+                  <p className="text-emerald-300 font-bold">{match.smart_money_signal || 'Dòng tiền tự nhiên giữa 2 cửa.'}</p>
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                    <span className="text-slate-400">Lợi Thế Kỳ Vọng:</span>
+                    <span className="text-base font-black text-emerald-400 font-mono">+{edgeVal}% EV</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button onClick={() => setActiveModal(null)} className="w-full mt-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-200">
+              Đóng Lại
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
