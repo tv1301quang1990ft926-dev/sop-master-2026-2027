@@ -94,8 +94,12 @@ function App() {
     <div className="min-h-screen bg-slate-100 font-sans text-slate-900">
       <AppHeader />
       <main className="mx-auto max-w-4xl px-3 py-6 pb-28 sm:px-5">
+        {/* TAB 2: BIẾN ĐỘNG ODDS GĐ2 (TRUYỀN TRỰC TIẾP DỮ LIỆU THỰC TẾ GĐ1 SAN) */}
         {activePhase === 'tracking' ? (
-          <TrackingBoard />
+          <TrackingBoard 
+            matches={orderedMatches} 
+            onRefresh={loadMatches} 
+          />
         ) : activePhase === 'baseline' ? (
           <MatchBoard
             matches={orderedMatches}
@@ -106,18 +110,17 @@ function App() {
             onOpenH2H={setH2hMatch}
           />
         ) : (
-          <PhasePlaceholderView
-            phase={PHASES[activePhase]}
-            matches={orderedMatches}
-            status={status}
-            trackedIds={trackedIds}
-            onToggleTrack={toggleTrack}
-            onOpenH2H={setH2hMatch}
-          />
+          <PhasePlaceholderView phaseId={activePhase} />
         )}
       </main>
-      <BottomNav activePhase={activePhase} onSelect={setActivePhase} />
-      {h2hMatch && <H2HModal match={h2hMatch} onClose={() => setH2hMatch(null)} />}
+
+      {/* MODAL XEM H2H */}
+      {h2hMatch && (
+        <H2HModal match={h2hMatch} onClose={() => setH2hMatch(null)} />
+      )}
+
+      {/* THANH ĐIỀU HƯỚNG ĐÁY MÀN HÌNH */}
+      <BottomNav activePhase={activePhase} onPhaseChange={setActivePhase} />
     </div>
   );
 }
