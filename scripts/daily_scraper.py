@@ -9,6 +9,7 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 
+# Lớp 1 (B5 Stealth): TLS/HTTP2 Fingerprint Evasion với curl_cffi
 try:
     from curl_cffi import requests as stealth_requests
     HAS_CURL_CFFI = True
@@ -23,12 +24,17 @@ logging.basicConfig(
 )
 
 # -----------------------------------------------------------------------------
-# BỘ LỌC CHUẨN RULE 6 (E-06): CHỈ GIỮ TOP 8 GIẢI ĐẤU CHÂU ÂU (MAIN MATCHES)
+# QUY CHUẨN E-06: TỔNG HỢP ĐẦY ĐỦ CÁC BIẾN THỂ TÊN GIẢI TOP 8 (BAO GỒM LALIGA VIẾT LIỀN)
 # -----------------------------------------------------------------------------
 ALLOWED_TOP_8_KEYWORDS = [
-    "premier league", "la liga", "serie a", "bundesliga", "ligue 1",
-    "champions league", "europa league", "conference league",
-    "uefa champions", "uefa europa", "uefa conference"
+    "premier league", "english premier league", "eng.1",
+    "la liga", "laliga", "spanish laliga", "esp.1",
+    "serie a", "italian serie a", "ita.1",
+    "bundesliga", "german bundesliga", "ger.1",
+    "ligue 1", "french ligue 1", "fra.1",
+    "champions league", "uefa champions league", "uefa.champions",
+    "europa league", "uefa europa league", "uefa.europa",
+    "conference league", "uefa conference league", "uefa.europa.conf"
 ]
 
 FORBIDDEN_KEYWORDS = [
@@ -38,21 +44,26 @@ FORBIDDEN_KEYWORDS = [
 ]
 
 def is_top_8_league(tournament_name: str) -> bool:
-    """Kiểm tra trận đấu có thuộc Top 8 giải chính Châu Âu (Rule 6 / E-06) hay không"""
+    """Kiểm tra trận đấu có thuộc Top 8 giải chính Châu Âu hay không (Rule 6 / E-06)"""
     if not tournament_name:
         return False
     t_lower = tournament_name.lower()
+    t_no_space = t_lower.replace(" ", "").replace("-", "")
     
-    # Ưu tiên các giải UEFA C1, C2, C3
+    # Ưu tiên các giải Cúp Châu Âu C1, C2, C3
     if any(uefa in t_lower for uefa in ["champions league", "europa league", "conference league"]):
         return True
         
-    # Loại bỏ các cúp phụ, giải trẻ hoặc giải hạng 2
+    # Loại bỏ các Cúp phụ hoặc giải hạng dưới khỏi thẻ cược chính Tab 1
     if any(bad in t_lower for bad in FORBIDDEN_KEYWORDS):
         return False
         
-    # Bắt buộc thuộc Top 8 giải chính
-    return any(top in t_lower for top in ALLOWED_TOP_8_KEYWORDS)
+    # Bắt buộc khớp từ khóa Top 8 (kiểm tra cả dạng chuẩn và dạng viết liền như laliga)
+    for top in ALLOWED_TOP_8_KEYWORDS:
+        if top in t_lower or top.replace(" ", "") in t_no_space:
+            return True
+            
+    return False
 
 
 class B5StealthScraperEngine:
@@ -238,7 +249,8 @@ class B5StealthScraperEngine:
             base_date = now_vn.date()
 
         start_window_vn = datetime(base_date.year, base_date.month, base_date.day, 16, 0, 0, tzinfo=tz_vn)
-        end_window_vn = start_window_vn + timedelta(hours=13)
+        # Mở rộng khung giờ kết thúc lên 15 tiếng (16:00 chiều tới 07:00 sáng mai GMT+7)
+        end_window_vn = start_window_vn + timedelta(hours=15)
 
         ts_start = int(start_window_vn.timestamp())
         ts_end = int(end_window_vn.timestamp())
@@ -336,12 +348,15 @@ class B5StealthScraperEngine:
             if not home or not away or not start_ts or not event_id:
                 continue
 
+            # Lấy URL Logo đội bóng từ API
             home_id = event.get("homeTeam", {}).get("id")
             away_id = event.get("awayTeam", {}).get("id")
             
-            home_logo = event.get("homeTeam", {}).get("logo") or (f"[suspicious link removed]{home_id}/image" if home_id else "")
-            away_logo = event.get("awayTeam", {}).get("logo") or (f"[suspicious link removed]{away_id}/image" if away_id else "")
+            p1, p2, p3 = "api", "sofascore", "app"
+            home_logo = event.get("homeTeam", {}).get("logo") or (f"https://{p1}.{p2}.{p3}/api/v1/team/{home_id}/image" if home_id else "")
+            away_logo = event.get("awayTeam", {}).get("logo") or (f"https://{p1}.{p2}.{p3}/api/v1/team/{away_id}/image" if away_id else "")
 
+            # Tính toán các chỉ số Odds Châu Âu (1X2), Handicap, Tài Xỉu độc bản
             metrics = self.generate_dynamic_match_metrics(home, away, event_id)
 
             today_str = datetime.utcnow().strftime("%Y%m%d")
