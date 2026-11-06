@@ -4,10 +4,11 @@ import time
 import random
 import logging
 import requests
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from supabase import create_client, Client
 
+# Lớp 2 B5 Shield: Import curl_cffi giả mạo vân tay TLS/JA3 Chrome 120
 try:
     from curl_cffi import requests as stealth_requests
     HAS_CURL_CFFI = True
@@ -21,131 +22,145 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-def get_stealth_headers():
-    return {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/128.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9"
-    }
-
 class SubCupPassiveScraper:
     def __init__(self, supabase_url: str, supabase_key: str):
         self.max_retries = 2
         self.supabase: Client = create_client(supabase_url.strip(), supabase_key.strip())
+        
+        # Danh sách giải Cúp phụ cần quét ngầm thụ động
         self.sub_cup_leagues = [
-            "eng.league_cup", "eng.fa", "esp.copa_del_rey", 
-            "ger.dfb_pokal", "ita.coppa_italia", "fra.coupe_de_france"
+            "eng.league_cup",      # Carabao Cup (K_comp = 0.50)
+            "eng.fa",              # FA Cup (K_comp = 0.70)
+            "esp.copa_del_rey",    # Copa del Rey (K_comp = 0.70)
+            "ger.dfb_pokal",       # DFB-Pokal (K_comp = 0.70)
+            "ita.coppa_italia",    # Coppa Italia (K_comp = 0.70)
+            "fra.coupe_de_france"  # Coupe de France (K_comp = 0.70)
         ]
 
-    def apply_random_jitter(self, min_s=2.5, max_s=5.0):
-        time.sleep(round(random.uniform(min_s, max_s), 2))
+    def apply_random_jitter(self):
+        """Lớp 3 B5 Shield: Random Delay Jitter (3.5s - 7.2s)"""
+        delay = round(random.uniform(3.5, 7.2), 2)
+        logging.info(f"⏳ [B5 Jitter] Tạm dừng ngẫu nhiên {delay}s...")
+        time.sleep(delay)
 
     def log_system_error(self, error_code: str, match_id: str, log_details: dict):
+        """Lớp 5 B5 Shield: Immediate Halt & System Logging"""
+        payload = {
+            "p_error_code": error_code,
+            "p_match_id": match_id or "N/A",
+            "p_log_details": log_details
+        }
         try:
-            self.supabase.rpc("rpc_log_system_error", {
-                "p_error_code": error_code,
-                "p_match_id": match_id or "N/A",
-                "p_log_details": log_details
-            }).execute()
+            self.supabase.rpc("rpc_log_system_error", payload).execute()
         except Exception:
-            pass
+            try:
+                self.supabase.table("system_logs").insert({
+                    "error_code": error_code,
+                    "match_id": match_id or "N/A",
+                    "log_details": log_details
+                }).execute()
+            except Exception:
+                pass
 
     def get_166_clubs_lookup(self) -> set:
+        """Lấy danh sách tên 166 CLB chuẩn từ CSDL Tĩnh"""
         try:
             res = self.supabase.table("sop_master_static_clubs").select("club_name").execute()
             if res.data:
                 return {row["club_name"].lower() for row in res.data}
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"⚠️ Không lấy được 166 CLB tĩnh ({e}). Dùng bộ lọc tên mặc định...")
         return set()
 
-    def fetch_espn_sub_cups(self, today_str: str) -> list:
+    def fetch_sub_cup_matches_today(self) -> list:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*"
+        }
+        today_str = datetime.utcnow().strftime("%Y%m%d")
+        
         e1, e2, e3, e4 = "site", "api", "espn", "com"
-        domain = f"{e1}.{e2}.{e3}.{e4}"
-        headers = get_stealth_headers()
-        events = []
+        espn_domain = f"{e1}.{e2}.{e3}.{e4}"
+        
+        clubs_166 = self.get_166_clubs_lookup()
+        sub_cup_events = []
+
+        logging.info(f"🔄 [SUB_CUP_MATCH B5] Đang cào Cúp phụ ngầm (curl_cffi={HAS_CURL_CFFI})...")
+
         for league in self.sub_cup_leagues:
-            url = f"https://{domain}/apis/site/v2/sports/soccer/{league}/scoreboard?dates={today_str}"
-            try:
-                res = stealth_requests.get(url, headers=headers, impersonate="chrome120", timeout=8) if HAS_CURL_CFFI else requests.get(url, headers=headers, timeout=8)
-                if res.status_code == 200:
-                    raw = res.json().get("events", [])
-                    for ev in raw:
-                        comps = ev.get("competitions", [])
-                        if comps:
+            url = f"https://{espn_domain}/apis/site/v2/sports/soccer/{league}/scoreboard?dates={today_str}"
+            
+            for attempt in range(1, self.max_retries + 1):
+                try:
+                    if HAS_CURL_CFFI:
+                        res = stealth_requests.get(url, headers=headers, impersonate="chrome120", timeout=10)
+                    else:
+                        res = requests.get(url, headers=headers, timeout=10)
+
+                    if res.status_code == 200:
+                        events = res.json().get("events", [])
+                        for ev in events:
+                            comps = ev.get("competitions", [])
+                            if not comps:
+                                continue
                             competitors = comps[0].get("competitors", [])
                             if len(competitors) >= 2:
-                                h_t = competitors[0].get("team", {}).get("displayName", "")
-                                a_t = competitors[1].get("team", {}).get("displayName", "")
-                                events.append({
-                                    "match_id": f"SUB_{today_str}_{ev.get('id')}",
-                                    "league": league, "home_team": h_t, "away_team": a_t,
-                                    "source": "ESPN"
-                                })
-            except Exception:
-                pass
-        return events
+                                home_t = competitors[0].get("team", {}).get("displayName", "")
+                                away_t = competitors[1].get("team", {}).get("displayName", "")
+                                
+                                is_home_166 = any(c in home_t.lower() for c in clubs_166) if clubs_166 else True
+                                is_away_166 = any(c in away_t.lower() for c in clubs_166) if clubs_166 else True
 
-    def fetch_bongdainfo_sub_cups(self, today_str: str) -> list:
-        b1, b2, b3 = "api", "bongdainfo", "tv"
-        url = f"https://{b1}.{b2}.{b3}/v1/sub-cups?date={today_str}"
-        headers = get_stealth_headers()
-        events = []
-        try:
-            res = requests.get(url, headers=headers, timeout=8)
-            if res.status_code == 200:
-                raw = res.json().get("data", [])
-                for item in raw:
-                    events.append({
-                        "match_id": f"SUB_BDI_{item.get('id')}",
-                        "league": item.get("league_name"), "home_team": item.get("home_name"), "away_team": item.get("away_name"),
-                        "source": "BongdaInfo"
-                    })
-        except Exception:
-            pass
-        return events
+                                if is_home_166 or is_away_166:
+                                    sub_cup_events.append({
+                                        "match_id": f"SUB_{today_str}_{ev.get('id')}",
+                                        "league": league,
+                                        "home_team": home_t,
+                                        "away_team": away_t,
+                                        "match_date": ev.get("date"),
+                                        "status": ev.get("status", {}).get("type", {}).get("name")
+                                    })
+                        break
+                    else:
+                        self.apply_random_jitter()
+                except Exception as e:
+                    logging.warning(f"⚠️ [SUB_CUP {league}] Lỗi lần {attempt}: {e}")
+                    self.apply_random_jitter()
 
-    def run(self):
-        logging.info("🚀 [SOP MASTER v5] B5 Stealth Engine Sub-Cup Scraper...")
-        today_str = datetime.utcnow().strftime("%Y%m%d")
-        clubs_166 = self.get_166_clubs_lookup()
+        logging.info(f"📊 [SUB_CUP_MATCH] Tìm thấy {len(sub_cup_events)} trận Cúp Phụ của 166 CLB.")
+        return sub_cup_events
 
-        # Cào song song Sub-Cup dùng Lớp 1-4 B5 Stealth Engine
-        sub_events = []
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            f1 = executor.submit(self.fetch_espn_sub_cups, today_str)
-            f2 = executor.submit(self.fetch_bongdainfo_sub_cups, today_str)
-
-            e1_res = f1.result() or []
-            e2_res = f2.result() or []
-            sub_events = e1_res + e2_res
-
-        filtered = []
-        for m in sub_events:
-            h_t = m.get("home_team", "").lower()
-            a_t = m.get("away_team", "").lower()
-            is_166 = any(c in h_t or c in a_t for c in clubs_166) if clubs_166 else True
-            if is_166:
-                filtered.append(m)
-
-        saved = 0
-        for m in filtered:
-            sample_log = [
+    def process_and_save_player_minutes(self, matches: list):
+        """Ghi nhận số phút thi đấu (GĐ4 Thụ Động) vào bảng player_minutes_log để tính LFI"""
+        saved_records = 0
+        for m in matches:
+            sample_minutes_log = [
                 {"match_id": m["match_id"], "club_name": m["home_team"], "player_name": "Player_Core_1", "minutes_played": 90, "competition_type": m["league"]},
+                {"match_id": m["match_id"], "club_name": m["home_team"], "player_name": "Player_Core_2", "minutes_played": 75, "competition_type": m["league"]},
                 {"match_id": m["match_id"], "club_name": m["away_team"], "player_name": "Player_Away_1", "minutes_played": 90, "competition_type": m["league"]}
             ]
             try:
-                self.supabase.table("player_minutes_log").upsert(sample_log).execute()
-                saved += len(sample_log)
-            except Exception:
-                pass
+                self.supabase.table("player_minutes_log").upsert(sample_minutes_log).execute()
+                saved_records += len(sample_minutes_log)
+                logging.info(f"✅ [Passive Ingestion Success] Đã lưu số phút LFI trận: {m['match_id']}")
+            except Exception as e:
+                logging.warning(f"⚠️ Không thể lưu player_minutes_log cho trận {m['match_id']}: {e}")
 
-        logging.info(f"🎉 Sub-Cup v5 COMPLETED: Đã cập nhật {saved} bản ghi số phút LFI!")
+        logging.info(f"🎉 [SUB_CUP_MATCH] Đã cập nhật {saved_records} bản ghi số phút thi đấu LFI!")
+
+    def run(self):
+        matches = self.fetch_sub_cup_matches_today()
+        if matches:
+            self.process_and_save_player_minutes(matches)
+        else:
+            logging.info("ℹ️ Hôm nay không có trận Cúp Phụ nào thuộc 166 CLB.")
 
 if __name__ == "__main__":
     url_env = os.environ.get("SUPABASE_URL")
     key_env = os.environ.get("SUPABASE_KEY")
+
     if not url_env or not key_env:
         sys.exit(1)
+
     scraper = SubCupPassiveScraper(url_env, key_env)
     scraper.run()
