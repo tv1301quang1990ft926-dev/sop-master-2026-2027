@@ -40,6 +40,25 @@ class SOPMasterStage2Tracker:
         delay = round(random.uniform(2.5, 5.0), 2)
         time.sleep(delay)
 
+    def log_system_error(self, error_code: str, match_id: str, log_details: dict):
+        """Lưu lỗi kỹ thuật vào bảng system_logs"""
+        payload = {
+            "p_error_code": error_code,
+            "p_match_id": match_id or "N/A",
+            "p_log_details": log_details
+        }
+        try:
+            self.supabase.rpc("rpc_log_system_error", payload).execute()
+        except Exception:
+            try:
+                self.supabase.table("system_logs").insert({
+                    "error_code": error_code,
+                    "match_id": match_id or "N/A",
+                    "log_details": log_details
+                }).execute()
+            except Exception:
+                pass
+
     def fetch_pending_matches_for_t3h(self) -> list:
         """Lấy các trận thuộc cửa sổ mốc T-12h đến T-2h từ bảng sop_master_baseline_scans"""
         now_utc = datetime.now(timezone.utc)
@@ -69,13 +88,31 @@ class SOPMasterStage2Tracker:
         logging.info(f"📊 Tìm thấy {len(target_matches)} trận hợp lệ trong khung giờ T-12h -> T-2h.")
         return target_matches
 
+    def get_club_recent_player_minutes(self, club_name: str) -> int:
+        """
+        GHÉ CSDL KIỂM TRA SỐ PHÚT THI ĐẤU:
+        Truy vấn bảng player_minutes_log để lấy tổng số phút thi đấu 7 ngày gần nhất của CLB
+        phục vụ tính chỉ số mệt mỏi LFI Index.
+        """
+        if not club_name:
+            return 0
+        try:
+            seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+            res = self.supabase.table("player_minutes_log") \
+                .select("minutes_played") \
+                .ilike("club_name", f"%{club_name}%") \
+                .gte("match_date", seven_days_ago) \
+                .execute()
+            
+            logs = res.data or []
+            total_minutes = sum(row.get("minutes_played", 0) for row in logs)
+            return total_minutes
+        except Exception as e:
+            logging.debug(f"ℹ️ Không lấy được player_minutes_log cho {club_name}: {e}")
+            return 0
+
     def fetch_sofascore_live_odds(self, event_id: str) -> dict:
-        """
-        Lớp 1, 2, 3 (B5 Stealth): Cào Odds Live từ Cổng SofaScore
-        - Dynamic Domain Splitting
-        - User-Agent Spoofing
-        - Chrome 120 TLS Impersonate
-        """
+        """Cào Odds Live từ Cổng SofaScore (Primary)"""
         p1, p2, p3 = "api", "sofascore", "com"
         domain_host = f"{p1}.{p2}.{p3}"
         url = f"https://{domain_host}/api/v1/event/{event_id}/odds/1/all"
@@ -103,23 +140,21 @@ class SOPMasterStage2Tracker:
                     for market in markets:
                         market_name = str(market.get("marketName", "")).lower()
 
-                        # Asian Handicap
                         if "asian handicap" in market_name or "handicap" in market_name:
                             choices = market.get("choices", [])
                             if choices and len(choices) >= 2:
-                                hc_str = choices[0].get("handicap")
+                                hc_str = choices.get("handicap")
                                 if hc_str is not None:
                                     try:
                                         live_handicap = float(hc_str)
                                     except ValueError:
                                         pass
-                                live_home_odds = choices[0].get("decimalValue") or choices[0].get("fractionalValue")
+                                live_home_odds = choices.get("decimalValue") or choices.get("fractionalValue")
 
-                        # Over / Under
                         if "total" in market_name or "over/under" in market_name:
                             choices = market.get("choices", [])
                             if choices and len(choices) >= 2:
-                                ou_str = choices[0].get("handicap")
+                                ou_str = choices.get("handicap")
                                 if ou_str is not None:
                                     try:
                                         live_over_under = float(ou_str)
@@ -142,11 +177,7 @@ class SOPMasterStage2Tracker:
         return {"raw_fetched": False}
 
     def fetch_espn_failover_odds(self, match: dict) -> dict:
-        """
-        Lớp 5 (B5 Stealth - Dành riêng GĐ2): Multi-Provider Live Odds Failover
-        Truy vấn trực tiếp chi tiết Live Odds Pickcenter/Scoreboard từ ESPN
-        khi Cổng SofaScore bị nghẽn hoặc bị chặn IP.
-        """
+        """ESPN Pickcenter Live Odds Failover (Secondary)"""
         e1, e2, e3, e4 = "site", "api", "espn", "com"
         espn_domain = f"{e1}.{e2}.{e3}.{e4}"
         
@@ -182,7 +213,7 @@ class SOPMasterStage2Tracker:
                     competitions = ev.get("competitions", [])
                     if not competitions:
                         continue
-                    comp = competitions[0] if isinstance(competitions, list) else competitions
+                    comp = competitions if isinstance(competitions, list) else competitions
                     teams = comp.get("competitors", [])
                     
                     t_names = [t.get("team", {}).get("displayName", "").lower() for t in teams]
@@ -190,7 +221,7 @@ class SOPMasterStage2Tracker:
                     if any(home_team in t for t in t_names) or any(away_team in t for t in t_names):
                         odds_list = comp.get("odds", [])
                         if odds_list:
-                            odd_data = odds_list[0] if isinstance(odds_list, list) else odds_list
+                            odd_data = odds_list if isinstance(odds_list, list) else odds_list
                             details = odd_data.get("details", "0.0")
                             over_under = odd_data.get("overUnder", 2.5)
                             
@@ -216,10 +247,7 @@ class SOPMasterStage2Tracker:
         return {"raw_fetched": False}
 
     def analyze_live_tracking_data(self, match: dict) -> dict:
-        """
-        Bóc tách biến động Odds Live sát giờ G (mốc T-3h),
-        đối chiếu GĐ1 Baseline để tính Expected Edge & gán nhãn đồng bộ Bolt/Supabase.
-        """
+        """Bóc tách biến động Odds Live mốc T-3h, tính toán bẫy Odds & ghép dữ liệu mệt mỏi LFI"""
         payload = match.get("baseline_payload") or {}
         home_team = match.get("home_team")
         away_team = match.get("away_team")
@@ -230,10 +258,8 @@ class SOPMasterStage2Tracker:
         opening_home_odds = payload.get("odds_home_opening", 0.90)
         opening_ou = payload.get("over_under_opening", 2.5)
 
-        # 1. Cào Odds qua SofaScore (Lớp 1-4)
+        # 1. Cào Live Odds từ SofaScore hoặc ESPN Failover
         live_data = self.fetch_sofascore_live_odds(event_id)
-        
-        # 2. Nếu thất bại, chuyển sang Lớp 5 Failover (ESPN Pickcenter Live Odds)
         if not live_data.get("raw_fetched"):
             logging.info(f"🔄 Kích hoạt Lớp 5 Failover (ESPN Pickcenter) cho trận {home_team} vs {away_team}")
             live_data = self.fetch_espn_failover_odds(match)
@@ -243,16 +269,15 @@ class SOPMasterStage2Tracker:
             current_home_odds = live_data["live_home_odds"]
             current_ou = live_data["live_over_under"] if live_data.get("live_over_under") is not None else opening_ou
             provider_used = live_data.get("provider", "SofaScore")
-            logging.info(f"🌐 Cào live [{provider_used}] thành công cho {home_team} vs {away_team}: Odds={current_home_odds}, HC={current_handicap}")
+            logging.info(f"🌐 Cào live [{provider_used}] cho {home_team} vs {away_team}: Odds={current_home_odds}, HC={current_handicap}")
         else:
             current_handicap = opening_handicap
             current_home_odds = opening_home_odds
             current_ou = opening_ou
             logging.info(f"ℹ️ Dùng giá trị Baseline thực tế cho {home_team} vs {away_team}")
 
+        # 2. Tính chênh lệch Odds & Gán nhãn bẫy giá (Rule E-08)
         delta_odds = round(current_home_odds - opening_home_odds, 2)
-        
-        # Gán nhãn khớp 100% với hiển thị Bolt UI & Supabase Table
         if delta_odds >= 0.06:
             trap_warning = "[CẢNH BÁO BẪY ODDS]"
             smart_money = "FADE_FAVORITE"
@@ -263,9 +288,19 @@ class SOPMasterStage2Tracker:
             trap_warning = "BINH THUONG"
             smart_money = "NEUTRAL"
 
+        # 3. Tính toán Expected Edge T-3h
         baseline_prob = payload.get("poisson_home_win_prob", 0.52)
         implied_live_prob = round(1.0 / current_home_odds, 3) if current_home_odds > 1.0 else 0.50
         expected_edge_t3h = round(baseline_prob - implied_live_prob, 3)
+
+        # 4. Query CSDL lấy số phút thi đấu 7 ngày gần nhất để tính mệt mỏi LFI tham chiếu
+        home_min_7d = self.get_club_recent_player_minutes(home_team)
+        away_min_7d = self.get_club_recent_player_minutes(away_team)
+        
+        # Chỉ số LFI ước tính dựa trên 270 phút chuẩn (3 trận/tuần)
+        lfi_home_est = round(min(1.0, home_min_7d / (11 * 270)), 2) if home_min_7d > 0 else payload.get("lfi_home", 0.40)
+        lfi_away_est = round(min(1.0, away_min_7d / (11 * 270)), 2) if away_min_7d > 0 else payload.get("lfi_away", 0.35)
+        lfi_warning = (lfi_home_est > 0.75) or (lfi_away_est > 0.75)
 
         return {
             "STT_Tran": match_id,
@@ -280,11 +315,14 @@ class SOPMasterStage2Tracker:
             "Smart_Money_Signal": smart_money,
             "Trap_Odds_Warning": trap_warning,
             "Data_Status_T3h": "VERIFIED_LIVE_T3H",
+            "lfi_home_est": lfi_home_est,
+            "lfi_away_est": lfi_away_est,
+            "lfi_warning_e07": lfi_warning,
             "Update_Timestamp_T3h": datetime.now(timezone.utc).isoformat()
         }
 
     def run(self):
-        logging.info("🚀 [GĐ2 - Live Tracking Engine] Bắt đầu quét Odds Live T-3h (Trang bị 5 Lớp Stealth)...")
+        logging.info("🚀 [GĐ2 - Live Tracking Engine] Bắt đầu quét Odds Live T-3h & kiểm tra thể lực LFI...")
         matches = self.fetch_pending_matches_for_t3h()
 
         if not matches:
