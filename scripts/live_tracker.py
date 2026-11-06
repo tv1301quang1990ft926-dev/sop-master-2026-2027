@@ -8,7 +8,7 @@ import requests
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 
-# Lớp 1 (B5 Stealth): TLS/HTTP2 Fingerprint Evasion với curl_cffi
+# Lớp 1 (B5 Stealth Engine): TLS Fingerprint Evasion với curl_cffi
 try:
     from curl_cffi import requests as stealth_requests
     HAS_CURL_CFFI = True
@@ -25,48 +25,23 @@ logging.basicConfig(
 class SOPMasterStage2Tracker:
     def __init__(self, supabase_url: str, supabase_key: str):
         self.max_retries = 3
-        self.supabase_url = supabase_url.strip()
-        self.supabase_key = supabase_key.strip()
-        
-        try:
-            self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
-            logging.info("✅ [GĐ2 Live Tracker] Khởi tạo Supabase Client thành công.")
-        except Exception as e:
-            logging.error(f"❌ Không thể kết nối Supabase Client: {e}")
-            sys.exit(1)
+        self.supabase: Client = create_client(supabase_url.strip(), supabase_key.strip())
 
     def apply_random_jitter(self):
-        """Lớp 4 (B5 Stealth): Exponential Random Jitter Delay chống quét tần số"""
+        """Exponential Random Jitter Delay chống quét tần số"""
         delay = round(random.uniform(2.5, 5.0), 2)
         time.sleep(delay)
 
-    def log_system_error(self, error_code: str, match_id: str, log_details: dict):
-        """Lưu lỗi kỹ thuật vào bảng system_logs"""
-        payload = {
-            "p_error_code": error_code,
-            "p_match_id": match_id or "N/A",
-            "p_log_details": log_details
-        }
-        try:
-            self.supabase.rpc("rpc_log_system_error", payload).execute()
-        except Exception:
-            try:
-                self.supabase.table("system_logs").insert({
-                    "error_code": error_code,
-                    "match_id": match_id or "N/A",
-                    "log_details": log_details
-                }).execute()
-            except Exception:
-                pass
-
-    def fetch_pending_matches_for_t3h(self) -> list:
-        """Lấy các trận thuộc cửa sổ mốc T-12h đến T-2h từ bảng sop_master_baseline_scans"""
+    def fetch_pending_matches_in_window(self) -> list:
+        """
+        LỌC CỬA SỔ T-3H (180M) ĐẾN T-80M từ bảng sop_master_baseline_scans (GĐ1)
+        """
         now_utc = datetime.now(timezone.utc)
         try:
             res = self.supabase.table("sop_master_baseline_scans").select("*").execute()
             matches = res.data or []
         except Exception as e:
-            logging.error(f"❌ Lỗi khi truy vấn sop_master_baseline_scans: {e}")
+            logging.error(f"❌ Lỗi truy vấn sop_master_baseline_scans: {e}")
             return []
         
         target_matches = []
@@ -78,22 +53,18 @@ class SOPMasterStage2Tracker:
                 m_dt = datetime.fromisoformat(m_date_str.replace("Z", "+00:00"))
                 diff_minutes = (m_dt - now_utc).total_seconds() / 60.0
                 
-                # Cửa sổ mốc T-12h đến T-2h (120 - 720 phút trước giờ bóng lăn)
-                if 120 <= diff_minutes <= 720:
-                    m['_diff_minutes'] = diff_minutes
+                # CHUẨN XÁC: Lấy đúng cửa sổ T-3h (180p) đến T-80m (80p)
+                if 80 <= diff_minutes <= 180:
+                    m['_diff_minutes'] = round(diff_minutes, 1)
                     target_matches.append(m)
             except Exception:
                 continue
 
-        logging.info(f"📊 Tìm thấy {len(target_matches)} trận hợp lệ trong khung giờ T-12h -> T-2h.")
+        logging.info(f"📊 Tìm thấy {len(target_matches)} trận GĐ1 nằm trong cửa sổ T-180m -> T-80m.")
         return target_matches
 
     def get_club_recent_player_minutes(self, club_name: str) -> int:
-        """
-        GHÉ CSDL KIỂM TRA SỐ PHÚT THI ĐẤU:
-        Truy vấn bảng player_minutes_log để lấy tổng số phút thi đấu 7 ngày gần nhất của CLB
-        phục vụ tính chỉ số mệt mỏi LFI Index.
-        """
+        """Query CSDL kiểm tra số phút thi đấu 7 ngày gần nhất để tính mệt mỏi LFI"""
         if not club_name:
             return 0
         try:
@@ -105,21 +76,17 @@ class SOPMasterStage2Tracker:
                 .execute()
             
             logs = res.data or []
-            total_minutes = sum(row.get("minutes_played", 0) for row in logs)
-            return total_minutes
-        except Exception as e:
-            logging.debug(f"ℹ️ Không lấy được player_minutes_log cho {club_name}: {e}")
+            return sum(row.get("minutes_played", 0) for row in logs)
+        except Exception:
             return 0
 
     def fetch_sofascore_live_odds(self, event_id: str) -> dict:
-        """Cào Odds Live từ Cổng SofaScore (Primary)"""
+        """Cào Live Odds từ SofaScore qua B5 Stealth Engine"""
         p1, p2, p3 = "api", "sofascore", "com"
-        domain_host = f"{p1}.{p2}.{p3}"
-        url = f"https://{domain_host}/api/v1/event/{event_id}/odds/1/all"
+        url = f"https://{p1}.{p2}.{p3}/api/v1/event/{event_id}/odds/1/all"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/128.0.0.0 Safari/537.36",
+            "Accept": "application/json"
         }
         
         for attempt in range(1, self.max_retries + 1):
@@ -130,223 +97,151 @@ class SOPMasterStage2Tracker:
                     res = requests.get(url, headers=headers, timeout=10)
 
                 if res.status_code == 200:
-                    data = res.json()
-                    markets = data.get("markets", [])
-                    
-                    live_handicap = None
-                    live_home_odds = None
-                    live_over_under = None
+                    markets = res.json().get("markets", [])
+                    live_handicap, live_home_odds, live_over_under = None, None, None
                     
                     for market in markets:
-                        market_name = str(market.get("marketName", "")).lower()
-
-                        if "asian handicap" in market_name or "handicap" in market_name:
+                        m_name = str(market.get("marketName", "")).lower()
+                        if "handicap" in m_name:
                             choices = market.get("choices", [])
-                            if choices and len(choices) >= 2:
-                                hc_str = choices.get("handicap")
-                                if hc_str is not None:
-                                    try:
-                                        live_handicap = float(hc_str)
-                                    except ValueError:
-                                        pass
-                                live_home_odds = choices.get("decimalValue") or choices.get("fractionalValue")
-
-                        if "total" in market_name or "over/under" in market_name:
+                            if len(choices) >= 2:
+                                hc_str = choices[0].get("handicap")
+                                live_handicap = float(hc_str) if hc_str is not None else None
+                                live_home_odds = choices[0].get("decimalValue") or choices[0].get("fractionalValue")
+                        if "total" in m_name or "over/under" in m_name:
                             choices = market.get("choices", [])
-                            if choices and len(choices) >= 2:
-                                ou_str = choices.get("handicap")
-                                if ou_str is not None:
-                                    try:
-                                        live_over_under = float(ou_str)
-                                    except ValueError:
-                                        pass
+                            if len(choices) >= 2:
+                                ou_str = choices[0].get("handicap")
+                                live_over_under = float(ou_str) if ou_str is not None else None
 
                     return {
                         "live_handicap": live_handicap,
                         "live_home_odds": float(live_home_odds) if live_home_odds else None,
                         "live_over_under": live_over_under,
-                        "provider": "SofaScore",
                         "raw_fetched": True
                     }
-
                 self.apply_random_jitter()
-            except Exception as e:
-                logging.debug(f"SofaScore Fetch Error (Lần {attempt}): {e}")
+            except Exception:
                 self.apply_random_jitter()
                 
         return {"raw_fetched": False}
 
-    def fetch_espn_failover_odds(self, match: dict) -> dict:
-        """ESPN Pickcenter Live Odds Failover (Secondary)"""
-        e1, e2, e3, e4 = "site", "api", "espn", "com"
-        espn_domain = f"{e1}.{e2}.{e3}.{e4}"
-        
-        home_team = match.get("home_team", "").lower()
-        away_team = match.get("away_team", "").lower()
-        league_name = match.get("league_name", "").lower()
-        
-        league_map = {
-            "premier league": "eng.1",
-            "la liga": "esp.1",
-            "serie a": "ita.1",
-            "bundesliga": "ger.1",
-            "ligue 1": "fra.1",
-            "champions league": "uefa.champions"
-        }
-        espn_league = "eng.1"
-        for k, v in league_map.items():
-            if k in league_name:
-                espn_league = v
-                break
-
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Accept": "application/json"
-        }
-
-        url = f"https://{espn_domain}/apis/site/v2/sports/soccer/{espn_league}/scoreboard"
-        try:
-            res = requests.get(url, headers=headers, timeout=8)
-            if res.status_code == 200:
-                events = res.json().get("events", [])
-                for ev in events:
-                    competitions = ev.get("competitions", [])
-                    if not competitions:
-                        continue
-                    comp = competitions if isinstance(competitions, list) else competitions
-                    teams = comp.get("competitors", [])
-                    
-                    t_names = [t.get("team", {}).get("displayName", "").lower() for t in teams]
-                    
-                    if any(home_team in t for t in t_names) or any(away_team in t for t in t_names):
-                        odds_list = comp.get("odds", [])
-                        if odds_list:
-                            odd_data = odds_list if isinstance(odds_list, list) else odds_list
-                            details = odd_data.get("details", "0.0")
-                            over_under = odd_data.get("overUnder", 2.5)
-                            
-                            hc_val = 0.0
-                            try:
-                                if "LINE" in str(details) or "PK" in str(details):
-                                    hc_val = 0.0
-                                else:
-                                    hc_val = float(str(details).split()[-1])
-                            except Exception:
-                                hc_val = 0.0
-
-                            return {
-                                "live_handicap": hc_val,
-                                "live_home_odds": 0.92,
-                                "live_over_under": float(over_under) if over_under else 2.5,
-                                "provider": "ESPN_Live_Pickcenter",
-                                "raw_fetched": True
-                            }
-        except Exception as e:
-            logging.debug(f"ESPN Live Odds Failover Error: {e}")
-            
-        return {"raw_fetched": False}
-
-    def analyze_live_tracking_data(self, match: dict) -> dict:
-        """Bóc tách biến động Odds Live mốc T-3h, tính toán bẫy Odds & ghép dữ liệu mệt mỏi LFI"""
+    def analyze_and_track_match(self, match: dict) -> dict:
+        """
+        THUẬT TOÁN TÍNH BIẾN ĐỘNG KÉP & NHẬN DIỆN BẪY ODDS (E-08):
+        1. So sánh Odds hiện tại vs Baseline GĐ1
+        2. So sánh Odds hiện tại vs Lượt cào 30 phút trước
+        """
         payload = match.get("baseline_payload") or {}
-        home_team = match.get("home_team")
-        away_team = match.get("away_team")
-        match_id = match.get("match_id")
-        
+        home_team = match.get("home_team", "")
+        away_team = match.get("away_team", "")
+        match_id = match.get("match_id", "")
         event_id = match_id.split("_")[-1] if "_" in match_id else match_id
-        opening_handicap = payload.get("handicap_opening", 0.0)
-        opening_home_odds = payload.get("odds_home_opening", 0.90)
+
+        opening_hc = payload.get("handicap_opening", 0.0)
+        opening_odds = payload.get("odds_home_opening", 0.90)
         opening_ou = payload.get("over_under_opening", 2.5)
 
-        # 1. Cào Live Odds từ SofaScore hoặc ESPN Failover
+        # Trích xuất dữ liệu cào T-30p trước đó từ CSDL (nếu có)
+        prev_hc, prev_odds, prev_ou = opening_hc, opening_odds, opening_ou
+        try:
+            res_prev = self.supabase.table("sop_master_tracking_movements").select("*").eq("match_id", match_id).execute()
+            if res_prev.data:
+                prev_rec = res_prev.data[0]
+                prev_hc = prev_rec.get("handicap_current_t3h", opening_hc)
+                prev_ou = prev_rec.get("overunder_current_t3h", opening_ou)
+                status_str = prev_rec.get("data_status_t3h", "")
+                if "ODDS:" in status_str:
+                    try:
+                        prev_odds = float(status_str.split("ODDS:")[1].split("_")[0])
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Cào Live Odds hiện tại
         live_data = self.fetch_sofascore_live_odds(event_id)
-        if not live_data.get("raw_fetched"):
-            logging.info(f"🔄 Kích hoạt Lớp 5 Failover (ESPN Pickcenter) cho trận {home_team} vs {away_team}")
-            live_data = self.fetch_espn_failover_odds(match)
-
         if live_data.get("raw_fetched") and live_data.get("live_home_odds") is not None:
-            current_handicap = live_data["live_handicap"] if live_data.get("live_handicap") is not None else opening_handicap
-            current_home_odds = live_data["live_home_odds"]
-            current_ou = live_data["live_over_under"] if live_data.get("live_over_under") is not None else opening_ou
-            provider_used = live_data.get("provider", "SofaScore")
-            logging.info(f"🌐 Cào live [{provider_used}] cho {home_team} vs {away_team}: Odds={current_home_odds}, HC={current_handicap}")
+            curr_hc = live_data["live_handicap"] if live_data.get("live_handicap") is not None else opening_hc
+            curr_odds = live_data["live_home_odds"]
+            curr_ou = live_data["live_over_under"] if live_data.get("live_over_under") is not None else opening_ou
         else:
-            current_handicap = opening_handicap
-            current_home_odds = opening_home_odds
-            current_ou = opening_ou
-            logging.info(f"ℹ️ Dùng giá trị Baseline thực tế cho {home_team} vs {away_team}")
+            curr_hc, curr_odds, curr_ou = prev_hc, prev_odds, prev_ou
 
-        # 2. Tính chênh lệch Odds & Gán nhãn bẫy giá (Rule E-08)
-        delta_odds = round(current_home_odds - opening_home_odds, 2)
-        if delta_odds >= 0.06:
-            trap_warning = "[CẢNH BÁO BẪY ODDS]"
-            smart_money = "FADE_FAVORITE"
-        elif delta_odds <= -0.04:
-            trap_warning = "AN TOAN"
-            smart_money = "[DÒNG TIỀN THÔNG MINH]"
+        # TÍNH CHÊNH LỆCH ODDS (VARIANCES)
+        delta_vs_baseline = round(curr_odds - opening_odds, 2)
+        delta_vs_prev_scrape = round(curr_odds - prev_odds, 2)
+
+        # PHÁT HIỆN BẪY ODDS (E-08) & DÒNG TIỀN NÓNG
+        if delta_vs_baseline >= 0.06:
+            trap_warning = "[CẢNH BÁO BẪY ODDS GĐ1]"
+        elif delta_vs_prev_scrape >= 0.04:
+            trap_warning = "[CẢNH BÁO BẪY ODDS VỪA TĂNG]"
         else:
-            trap_warning = "BINH THUONG"
+            trap_warning = "AN TOAN"
+
+        if delta_vs_prev_scrape <= -0.03:
+            smart_money = "[DÒNG TIỀN DỒN MẠNH 30P PAST]"
+        elif delta_vs_baseline <= -0.04:
+            smart_money = "[DÒNG TIỀN THÔNG MINH GĐ1]"
+        else:
             smart_money = "NEUTRAL"
 
-        # 3. Tính toán Expected Edge T-3h
+        # Tính Expected Edge T-3h
         baseline_prob = payload.get("poisson_home_win_prob", 0.52)
-        implied_live_prob = round(1.0 / current_home_odds, 3) if current_home_odds > 1.0 else 0.50
+        implied_live_prob = round(1.0 / curr_odds, 3) if curr_odds > 1.0 else 0.50
         expected_edge_t3h = round(baseline_prob - implied_live_prob, 3)
 
-        # 4. Query CSDL lấy số phút thi đấu 7 ngày gần nhất để tính mệt mỏi LFI tham chiếu
+        # Tính chỉ số LFI mệt mỏi
         home_min_7d = self.get_club_recent_player_minutes(home_team)
         away_min_7d = self.get_club_recent_player_minutes(away_team)
-        
-        # Chỉ số LFI ước tính dựa trên 270 phút chuẩn (3 trận/tuần)
-        lfi_home_est = round(min(1.0, home_min_7d / (11 * 270)), 2) if home_min_7d > 0 else payload.get("lfi_home", 0.40)
-        lfi_away_est = round(min(1.0, away_min_7d / (11 * 270)), 2) if away_min_7d > 0 else payload.get("lfi_away", 0.35)
-        lfi_warning = (lfi_home_est > 0.75) or (lfi_away_est > 0.75)
+        lfi_home = round(min(1.0, home_min_7d / 2970.0), 2) if home_min_7d > 0 else payload.get("lfi_home", 0.40)
+        lfi_away = round(min(1.0, away_min_7d / 2970.0), 2) if away_min_7d > 0 else payload.get("lfi_away", 0.35)
+
+        logging.info(f"⚽ {home_team} vs {away_team} (T-{match.get('_diff_minutes')}m): Odds={curr_odds} | Δ_GĐ1={delta_vs_baseline} | Δ_30p={delta_vs_prev_scrape}")
 
         return {
-            "STT_Tran": match_id,
-            "Gio_Thi_Dau_GMT7": payload.get("kickoff_time", ""),
-            "Giai_Dau": match.get("league_name", ""),
-            "Tran_Dau": f"{home_team} vs {away_team}",
-            "Match_ID": match_id,
-            "Handicap_Current_T3h": current_handicap,
-            "OverUnder_Current_T3h": current_ou,
-            "Expected_Edge_T3h": expected_edge_t3h,
-            "Market_Volume_Trend": "HIGH_LIQUIDITY" if abs(delta_odds) > 0.03 else "STABLE_LIQUIDITY",
-            "Smart_Money_Signal": smart_money,
-            "Trap_Odds_Warning": trap_warning,
-            "Data_Status_T3h": "VERIFIED_LIVE_T3H",
-            "lfi_home_est": lfi_home_est,
-            "lfi_away_est": lfi_away_est,
-            "lfi_warning_e07": lfi_warning,
-            "Update_Timestamp_T3h": datetime.now(timezone.utc).isoformat()
+            "match_id": match_id,
+            "stt_tran": match_id,
+            "gio_thi_dau_gmt7": payload.get("kickoff_time", ""),
+            "giai_dau": match.get("league_name", ""),
+            "tran_dau": f"{home_team} vs {away_team}",
+            "handicap_current_t3h": curr_hc,
+            "overunder_current_t3h": curr_ou,
+            "expected_edge_t3h": expected_edge_t3h,
+            "market_volume_trend": "HIGH_LIQUIDITY" if abs(delta_vs_baseline) > 0.03 else "STABLE_LIQUIDITY",
+            "smart_money_signal": smart_money,
+            "trap_odds_warning": trap_warning,
+            "data_status_t3h": f"SCRAPED_T_MINUS_{int(match.get('_diff_minutes'))}M_ODDS:{curr_odds}_D1:{delta_vs_baseline}_D2:{delta_vs_prev_scrape}",
+            "lfi_home_est": lfi_home,
+            "lfi_away_est": lfi_away,
+            "lfi_warning_e07": (lfi_home > 0.75 or lfi_away > 0.75),
+            "update_timestamp_t3h": datetime.now(timezone.utc).isoformat()
         }
 
     def run(self):
-        logging.info("🚀 [GĐ2 - Live Tracking Engine] Bắt đầu quét Odds Live T-3h & kiểm tra thể lực LFI...")
-        matches = self.fetch_pending_matches_for_t3h()
+        logging.info("🚀 [GĐ2 - Live Tracker] Quét Kèo Live T-180m -> T-80m (30 phút/lần)...")
+        matches = self.fetch_pending_matches_in_window()
 
         if not matches:
-            logging.info("ℹ️ Không có trận nào nằm trong khung mốc T-12h -> T-2h cần theo dõi.")
+            logging.info("ℹ️ Không có trận nào nằm trong khung đếm ngược T-180m -> T-80m.")
             return
 
         saved_count = 0
         for m in matches:
-            tracking_payload = self.analyze_live_tracking_data(m)
+            payload = self.analyze_and_track_match(m)
             try:
-                self.supabase.table("sop_master_tracking_movements").upsert(tracking_payload).execute()
+                self.supabase.table("sop_master_tracking_movements").upsert(payload).execute()
                 saved_count += 1
-                logging.info(f"✅ [GĐ2 Tracker] Đã lưu dữ liệu cho: {m.get('home_team')} vs {m.get('away_team')}")
             except Exception as e:
                 logging.error(f"❌ Lỗi ghi Supabase GĐ2: {e}")
 
-        logging.info(f"🎉 HOÀN THÀNH GIAI ĐOẠN 2: Đã lưu {saved_count}/{len(matches)} trận thành công!")
+        logging.info(f"🎉 GIAI ĐOẠN 2 COMPLETE: Đã cập nhật biến động {saved_count}/{len(matches)} trận!")
 
 if __name__ == "__main__":
     url_env = os.environ.get("SUPABASE_URL")
     key_env = os.environ.get("SUPABASE_KEY")
-
     if not url_env or not key_env:
-        logging.error("❌ Thiếu biến môi trường SUPABASE_URL hoặc SUPABASE_KEY.")
         sys.exit(1)
 
     tracker = SOPMasterStage2Tracker(url_env, key_env)
