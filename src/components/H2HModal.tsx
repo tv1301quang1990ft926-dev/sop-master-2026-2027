@@ -1,79 +1,119 @@
-import { useEffect } from 'react';
-import { X } from 'lucide-react';
-import type { BaselineMatch, H2HEntry } from '@/types';
-import { formatHistoryDate } from '@/utils/dates';
+import React from 'react';
+import { X, Calendar, Trophy } from 'lucide-react';
+
+export interface H2HRecord {
+  date?: string;
+  giai_dau?: string;
+  league_name?: string;
+  home_team?: string;
+  away_team?: string;
+  score?: string;
+  winner?: string;
+}
 
 interface H2HModalProps {
-  match: BaselineMatch;
+  isOpen: boolean;
   onClose: () => void;
+  homeTeam: string;
+  awayTeam: string;
+  h2hHistory?: H2HRecord[];
 }
 
-function getWinner(entry: H2HEntry): string | null {
-  if (entry.winner) return entry.winner;
-  if (entry.home_score === null || entry.home_score === undefined || entry.away_score === null || entry.away_score === undefined) return null;
-  if (entry.home_score > entry.away_score) return entry.home_team;
-  if (entry.away_score > entry.home_score) return entry.away_team;
-  return 'Hòa';
-}
+export default function H2HModal({
+  isOpen,
+  onClose,
+  homeTeam,
+  awayTeam,
+  h2hHistory = [],
+}: H2HModalProps) {
+  if (!isOpen) return null;
 
-function getScore(entry: H2HEntry): string {
-  if (entry.score) return entry.score;
-  if (entry.home_score !== null && entry.home_score !== undefined && entry.away_score !== null && entry.away_score !== undefined) {
-    return `${entry.home_score} - ${entry.away_score}`;
-  }
-  return '1 - 1';
-}
-
-export default function H2HModal({ match, onClose }: H2HModalProps) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  const history = (match?.baseline_payload?.h2h_history || []).slice(0, 5);
+  // Sắp xếp giảm dần theo mốc thời gian (mới nhất -> cũ nhất) và lấy đúng 5 trận
+  const sortedH2H = [...h2hHistory]
+    .sort((a, b) => {
+      const timeA = a.date ? new Date(a.date).getTime() : 0;
+      const timeB = b.date ? new Date(b.date).getTime() : 0;
+      return timeB - timeA;
+    })
+    .slice(0, 5);
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="h2h-title"
-        className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
-        onClick={(event) => event.stopPropagation()}
+        className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#1b202c] p-5 text-white shadow-2xl space-y-4"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium text-slate-500">{match.league_name}</p>
-            <h2 id="h2h-title" className="mt-0.5 text-base font-semibold text-slate-900">H2H: {match.home_team} vs {match.away_team}</h2>
+        <div className="flex items-center justify-between border-b border-slate-700 pb-3">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-amber-400" />
+            <h3 className="font-bold text-sm text-cyan-300">
+              Lịch Sử Đối Đầu (H2H 5 Trận Gần Nhất)
+            </h3>
           </div>
-          <button type="button" onClick={onClose} aria-label="Đóng" className="rounded-full p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800">
-            <X className="h-5 w-5" aria-hidden="true" />
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+          >
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {history.length === 0 ? (
-          <p className="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600">Chưa có dữ liệu đối đầu</p>
+        <div className="text-center font-bold text-xs bg-slate-900 py-2 rounded-xl border border-slate-800 text-slate-200">
+          {homeTeam} vs {awayTeam}
+        </div>
+
+        {sortedH2H.length === 0 ? (
+          <div className="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-800 rounded-xl">
+            Chưa có dữ liệu đối đầu trực tiếp gần đây.
+          </div>
         ) : (
-          <ul className="mt-4 divide-y divide-slate-100">
-            {history.map((entry, index) => {
-              const winner = getWinner(entry);
+          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+            {sortedH2H.map((item, idx) => {
+              const league = item.giai_dau || item.league_name || 'Top 8 Châu Âu';
+              const dateStr = item.date || 'T-24h Baseline';
+              const home = item.home_team || homeTeam;
+              const away = item.away_team || awayTeam;
+              const score = item.score || '0 - 0';
+
               return (
-                <li key={`${entry.date}-${index}`} className="py-3 text-sm">
-                  <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
-                    <time>{formatHistoryDate(entry.date)}</time>
-                    {winner ? <span>Winner: <strong className="text-teal-700">{winner}</strong></span> : null}
+                <div
+                  key={idx}
+                  className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 text-xs space-y-1.5"
+                >
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 border-b border-slate-800/60 pb-1">
+                    <span className="font-bold text-cyan-400 uppercase tracking-wide">
+                      {league}
+                    </span>
+                    <span className="flex items-center gap-1 font-mono">
+                      <Calendar className="h-3 w-3" />
+                      {dateStr}
+                    </span>
                   </div>
-                  <p className="mt-1 font-medium text-slate-900">
-                    {entry.home_team} <span className="mx-1 font-bold text-slate-700">{getScore(entry)}</span> {entry.away_team}
-                  </p>
-                </li>
+
+                  <div className="flex justify-between items-center font-bold">
+                    <span className="truncate w-5/12 text-slate-200">{home}</span>
+                    <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono border border-cyan-500/30">
+                      {score}
+                    </span>
+                    <span className="truncate w-5/12 text-right text-slate-200">
+                      {away}
+                    </span>
+                  </div>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
+
+        <button
+          onClick={onClose}
+          className="w-full mt-2 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-200 cursor-pointer transition"
+        >
+          Đóng Lại
+        </button>
       </div>
     </div>
   );
