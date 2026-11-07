@@ -6,6 +6,7 @@ import random
 import logging
 import requests
 import hashlib
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
@@ -43,6 +44,29 @@ FORBIDDEN_KEYWORDS = [
     "liga 2", "serie b", "ligue 2", "friendly", "exhibition"
 ]
 
+# -----------------------------------------------------------------------------
+# BỔ SUNG: BỘ ÁNH XẠ CHUẨN HÓA TÊN GIẢI ĐẤU QUY CHUẨN (LEAGUE NORMALIZER)
+# -----------------------------------------------------------------------------
+LEAGUE_MAP = {
+    "eng.1": "Premier League", "premier league": "Premier League", "english premier league": "Premier League",
+    "esp.1": "La Liga", "la liga": "La Liga", "laliga": "La Liga", "spanish laliga": "La Liga",
+    "ita.1": "Serie A", "serie a": "Serie A", "italian serie a": "Serie A",
+    "ger.1": "Bundesliga", "bundesliga": "Bundesliga", "german bundesliga": "Bundesliga",
+    "fra.1": "Ligue 1", "ligue 1": "Ligue 1", "french ligue 1": "Ligue 1",
+    "uefa.champions": "Champions League", "champions league": "Champions League", "uefa champions league": "Champions League",
+    "uefa.europa": "Europa League", "europa league": "Europa League", "uefa europa league": "Europa League",
+    "uefa.europa.conf": "Conference League", "conference league": "Conference League", "uefa conference league": "Conference League"
+}
+
+def normalize_league_name(tour_name: str) -> str:
+    if not tour_name:
+        return "Unknown League"
+    t_lower = tour_name.lower().strip()
+    for k, v in LEAGUE_MAP.items():
+        if k in t_lower:
+            return v
+    return tour_name
+
 def is_top_8_league(tournament_name: str) -> bool:
     if not tournament_name:
         return False
@@ -61,10 +85,23 @@ def is_top_8_league(tournament_name: str) -> bool:
             
     return False
 
+# -----------------------------------------------------------------------------
+# BỔ SUNG: HÀM CHUẨN HÓA TÊN ĐỘI BÓNG TRIỆT ĐỂ (LOẠI BỎ CÁC TỪ PHỤ VÀ KÝ TỰ RÁC)
+# -----------------------------------------------------------------------------
 def normalize_team_name(name: str) -> str:
     if not name:
         return ""
     n = name.lower().strip()
+    
+    # Loại bỏ các từ phụ / năm thành lập / ký tự viết tắt của CLB
+    noise_patterns = [
+        r"\bfc\b", r"\bcf\b", r"\bsc\b", r"\bafc\b", r"\bac\b", r"\bas\b", r"\bss\b",
+        r"\bcalcio\b", r"\bclub\b", r"\bde\b", r"\bsporting\b", r"\batletic\b", r"\batletico\b",
+        r"\b1913\b", r"\b1909\b", r"\b1904\b", r"\b09\b", r"\b04\b"
+    ]
+    for p in noise_patterns:
+        n = re.sub(p, "", n)
+    
     replacements = {
         "manchester united": "man utd",
         "manchester city": "man city",
@@ -79,7 +116,7 @@ def normalize_team_name(name: str) -> str:
     for k, v in replacements.items():
         if k in n:
             return v
-    return n
+    return re.sub(r"\s+", " ", n).strip()
 
 def get_stealth_headers() -> dict:
     user_agents = [
@@ -179,7 +216,7 @@ class B5StealthParallelScraperEngine:
                     h_s = ev.get("homeScore", {}).get("current")
                     a_s = ev.get("awayScore", {}).get("current")
                     ts = ev.get("startTimestamp")
-                    league = ev.get("tournament", {}).get("name", "")
+                    league = normalize_league_name(ev.get("tournament", {}).get("name", ""))
                     if h_t and a_t and ts:
                         d_str = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
                         w = "HOME" if (h_s is not None and a_s is not None and h_s > a_s) else ("AWAY" if (h_s is not None and a_s is not None and a_s > h_s) else "DRAW")
@@ -234,7 +271,7 @@ class B5StealthParallelScraperEngine:
                                         "homeTeam": {"name": h_t, "logo": h_logo},
                                         "awayTeam": {"name": a_t, "logo": a_logo},
                                         "startTimestamp": ts,
-                                        "tournament": {"name": league},
+                                        "tournament": {"name": normalize_league_name(league)},
                                         "source": "ESPN"
                                     })
                 except Exception:
@@ -259,7 +296,7 @@ class B5StealthParallelScraperEngine:
                         "homeTeam": {"name": item.get("home_name"), "logo": item.get("home_logo", "")},
                         "awayTeam": {"name": item.get("away_name"), "logo": item.get("away_logo", "")},
                         "startTimestamp": item.get("match_timestamp"),
-                        "tournament": {"name": item.get("league_name", "")},
+                        "tournament": {"name": normalize_league_name(item.get("league_name", ""))},
                         "source": "BongdaInfo"
                     })
         except Exception:
@@ -286,7 +323,7 @@ class B5StealthParallelScraperEngine:
                         "away_score": m.get("away_score"),
                         "score": f"{m.get('home_score')} - {m.get('away_score')}",
                         "winner": m.get("winner", "DRAW"),
-                        "league": m.get("league", "H2H Match"),
+                        "league": normalize_league_name(m.get("league", "H2H Match")),
                         "source": "BongdaInfo"
                     })
                 return formatted
@@ -320,7 +357,7 @@ class B5StealthParallelScraperEngine:
                                 "homeTeam": {"name": h_t, "logo": ""},
                                 "awayTeam": {"name": a_t, "logo": ""},
                                 "startTimestamp": ts,
-                                "tournament": {"name": tour_name},
+                                "tournament": {"name": normalize_league_name(tour_name)},
                                 "source": "LiveScore"
                             })
         except Exception:
@@ -349,7 +386,8 @@ class B5StealthParallelScraperEngine:
         """
         GOM DỮ LIỆU CÀO SONG SONG ĐA CỔNG THÀNH 1 MATCH_ID DUY NHẤT CHO MỖI TRẬN ĐẤU (Entity Resolution)
         - So khớp tên đội bóng đã chuẩn hóa (home_team, away_team) & khung giờ đá.
-        - Tạo 1 MATCH_ID duy nhất duy nhất đại diện cho trận đấu.
+        - Chuẩn hóa tên giải đấu quy chuẩn (normalize_league_name).
+        - Tạo 1 MATCH_ID duy nhất đại diện cho trận đấu.
         - Ghép H2H từ cả 4 cổng thành 1 danh sách không trùng lặp.
         """
         sofa_list = raw_portal_data.get("sofascore", [])
@@ -379,6 +417,7 @@ class B5StealthParallelScraperEngine:
 
             h_norm = normalize_team_name(p_home)
             a_norm = normalize_team_name(p_away)
+            tour_norm = normalize_league_name(p_tour)
             match_key = f"{h_norm}_vs_{a_norm}"
 
             # Nếu chưa có trong map, tạo bản ghi đại diện DUY NHẤT cho trận đấu này
@@ -390,7 +429,7 @@ class B5StealthParallelScraperEngine:
                     "home_norm": h_norm,
                     "away_norm": a_norm,
                     "start_ts": p_ts,
-                    "tournament": p_tour,
+                    "tournament": tour_norm,
                     "event_id": str(ev.get("id")),
                     "sources_verified": [p_source],
                     "h2h_history": []
@@ -399,6 +438,8 @@ class B5StealthParallelScraperEngine:
                 # Nếu đã có, thêm nguồn đối soát vào bản ghi duy nhất hiện tại
                 if p_source not in merged_map[match_key]["sources_verified"]:
                     merged_map[match_key]["sources_verified"].append(p_source)
+                # Cập nhật tên giải đã chuẩn hóa nếu bản ghi trước đó là rác
+                merged_map[match_key]["tournament"] = tour_norm
 
         merged_fixtures = []
         for key, item in merged_map.items():
@@ -513,7 +554,7 @@ class B5StealthParallelScraperEngine:
             home = item["home_team"]
             away = item["away_team"]
             start_ts = item["start_ts"]
-            tournament = item["tournament"]
+            tournament = normalize_league_name(item["tournament"])
             event_id = item["event_id"]
 
             metrics = self.generate_metrics(home, away, event_id, item["h2h_history"])
