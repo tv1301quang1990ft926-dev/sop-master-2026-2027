@@ -84,7 +84,7 @@ function App() {
           />
         ) : (
           <PhasePlaceholderView
-            phase={PHASES.find((p) => p.id === activePhase) || PHASES[0]}
+            phase={PHASES[activePhase] ?? PHASES.baseline}
             matches={orderedMatches}
             status={status}
             trackedIds={trackedIds}
@@ -97,8 +97,7 @@ function App() {
       {/* Thanh điều hướng Giai đoạn dưới đáy màn hình */}
       <BottomNav
         activePhase={activePhase}
-        onSelect={(phaseId) => setActivePhase(phaseId as PhaseId)}
-        onPhaseChange={(phaseId) => setActivePhase(phaseId as PhaseId)}
+        onSelect={(phaseId) => setActivePhase(phaseId)}
       />
 
       {/* Popup Modal hiển thị 5 trận H2H gần nhất kèm Giải đấu */}
@@ -108,7 +107,13 @@ function App() {
           onClose={() => setH2hMatch(null)}
           homeTeam={h2hMatch.home_team}
           awayTeam={h2hMatch.away_team}
-          h2hHistory={h2hMatch.h2h_history || []}
+          h2hHistory={(h2hMatch.baseline_payload?.h2h_history ?? []).map((h) => ({
+            ...h,
+            score: h.score ?? undefined,
+            home_score: h.home_score ?? undefined,
+            away_score: h.away_score ?? undefined,
+            winner: h.winner ?? undefined,
+          }))}
         />
       )}
     </div>
