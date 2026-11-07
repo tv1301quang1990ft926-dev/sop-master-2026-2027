@@ -1,43 +1,47 @@
-import React from 'react';
-import { PHASES } from '@/constants/phases';
+import { PHASE_ORDER, PHASES } from '@/constants/phases';
 import type { PhaseId } from '@/types';
-import { Calendar, Activity, Zap, BarChart3 } from 'lucide-react';
 
 interface BottomNavProps {
-  activePhase: PhaseId | string;
-  onPhaseChange: (phaseId: PhaseId) => void;
+  activePhase: PhaseId;
+  onSelect: (phase: PhaseId) => void;
 }
 
-const PHASE_ICONS: Record<string, React.ReactNode> = {
-  baseline: <Calendar className="h-5 w-5" />,
-  tracking: <Activity className="h-5 w-5" />,
-  lockin: <Zap className="h-5 w-5" />,
-  audit: <BarChart3 className="h-5 w-5" />,
-};
-
-export default function BottomNav({ activePhase, onPhaseChange }: BottomNavProps) {
+export default function BottomNav({ activePhase, onSelect }: BottomNavProps) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-[#1b202c]/95 backdrop-blur-md px-2 py-2">
-      <div className="mx-auto flex max-w-md items-center justify-around">
-        {PHASES.map((phase) => {
-          const isActive = activePhase === phase.id || (activePhase === 'movement' && phase.id === 'tracking');
-          
+    <nav
+      aria-label="Phases"
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
+    >
+      <ul className="mx-auto grid max-w-2xl grid-cols-4">
+        {PHASE_ORDER.map((id) => {
+          const { code, name, icon: Icon } = PHASES[id];
+          const isActive = id === activePhase;
+
           return (
-            <button
-              key={phase.id}
-              onClick={() => onPhaseChange(phase.id as PhaseId)}
-              className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition cursor-pointer ${
-                isActive
-                  ? 'text-cyan-400 font-bold bg-cyan-500/10'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {PHASE_ICONS[phase.id] || <Activity className="h-5 w-5" />}
-              <span className="text-[10px] mt-1 font-medium">{phase.name}</span>
-            </button>
+            <li key={id}>
+              <button
+                type="button"
+                onClick={() => onSelect(id)}
+                aria-current={isActive ? 'page' : undefined}
+                aria-label={`${code} ${name}`}
+                className={`group flex w-full flex-col items-center gap-0.5 py-2 transition-colors duration-200 ${
+                  isActive ? 'text-teal-800' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span
+                  className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors duration-200 ${
+                    isActive ? 'bg-teal-100' : 'group-hover:bg-slate-100'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <span className="text-[11px] font-semibold leading-tight">{code}</span>
+                <span className="text-[11px] leading-tight">{name}</span>
+              </button>
+            </li>
           );
         })}
-      </div>
-    </div>
+      </ul>
+    </nav>
   );
 }

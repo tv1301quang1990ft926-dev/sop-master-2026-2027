@@ -5,7 +5,6 @@ import random
 import logging
 import requests
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
 from supabase import create_client, Client
 
 # Lớp 2 B5 Shield: Import curl_cffi giả mạo vân tay TLS/JA3 Chrome 120

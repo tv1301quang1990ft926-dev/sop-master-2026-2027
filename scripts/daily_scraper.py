@@ -7,7 +7,6 @@ import logging
 import requests
 import hashlib
 from datetime import datetime, timedelta, timezone
-from concurrent.futures import ThreadPoolExecutor
 from supabase import create_client, Client
 
 # Lớp 1 (B5 Stealth): TLS/HTTP2 Fingerprint Evasion với curl_cffi

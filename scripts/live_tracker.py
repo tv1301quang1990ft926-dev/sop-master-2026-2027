@@ -6,7 +6,6 @@ import random
 import logging
 import requests
 from datetime import datetime, timedelta, timezone
-from concurrent.futures import ThreadPoolExecutor
 from supabase import create_client, Client
 
 # Lớp 1 (B5 Stealth Engine): TLS Fingerprint Evasion với curl_cffi
@@ -24,41 +23,6 @@ logging.basicConfig(
 )
 
 class SOPMasterStage2Tracker:
-
-    def get_stealth_headers(self) -> dict:
-        """Lớp 3 B5 Stealth: User-Agent Spoofing & Header Mimesis"""
-        return {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"'
-        }
-
-    def fetch_livescore_live_odds(self, home_team: str, away_team: str) -> dict:
-        """Lớp 5 B5 Stealth: Cào Live Odds từ LiveScore"""
-        l1, l2, l3 = "prod-public-api", "livescore", "com"
-        url = f"https://{l1}.{l2}.{l3}/v1/api/app/odds/soccer?home={requests.utils.quote(home_team)}&away={requests.utils.quote(away_team)}"
-        headers = self.get_stealth_headers()
-        try:
-            if HAS_CURL_CFFI:
-                res = stealth_requests.get(url, headers=headers, impersonate="chrome120", timeout=7)
-            else:
-                res = requests.get(url, headers=headers, timeout=7)
-            if res.status_code == 200:
-                data = res.json().get("data", {})
-                return {
-                    "live_handicap": data.get("handicap"),
-                    "live_home_odds": data.get("home_odds"),
-                    "live_over_under": data.get("over_under"),
-                    "raw_fetched": True,
-                    "source": "LiveScore"
-                }
-        except Exception:
-            pass
-        return {"raw_fetched": False}
-
     def __init__(self, supabase_url: str, supabase_key: str):
         self.max_retries = 3
         self.supabase: Client = create_client(supabase_url.strip(), supabase_key.strip())
