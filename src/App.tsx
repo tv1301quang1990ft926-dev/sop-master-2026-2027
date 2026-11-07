@@ -19,9 +19,11 @@ function App() {
   const loadMatches = useCallback(async () => {
     setStatus('loading');
     try {
-      setMatches(await fetchTodayMatches());
+      const data = await fetchTodayMatches();
+      setMatches(data || []);
       setStatus('ready');
-    } catch {
+    } catch (err) {
+      console.error('Lỗi nạp danh sách trận đấu:', err);
       setStatus('error');
     }
   }, []);
@@ -30,17 +32,29 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
+  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7)
   const orderedMatches = useMemo(() => {
-    if (matches.length === 0) return [];
+    if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
-    const latestDate = getVietnamDateKey(matches[matches.length - 1].match_date);
-    return matches
-      .filter((match) => getVietnamDateKey(match.match_date) === latestDate)
-      .sort((a, b) => {
-        const trackedOrder = Number(trackedIds.has(b.match_id)) - Number(trackedIds.has(a.match_id));
-        if (trackedOrder !== 0) return trackedOrder;
-        return new Date(a.match_date).getTime() - new Date(b.match_date).getTime();
-      });
+    // Lấy ngày thi đấu mới nhất
+    const lastMatch = matches[matches.length - 1];
+    const latestDate = lastMatch?.match_date ? getVietnamDateKey(lastMatch.match_date) : null;
+
+    const filtered = latestDate
+      ? matches.filter((match) => getVietnamDateKey(match.match_date) === latestDate)
+      : matches;
+
+    return [...filtered].sort((a, b) => {
+      // 1. Ưu tiên trận được bấm ghim theo dõi
+      const isTrackedA = trackedIds.has(a.match_id) ? 1 : 0;
+      const isTrackedB = trackedIds.has(b.match_id) ? 1 : 0;
+      if (isTrackedB !== isTrackedA) return isTrackedB - isTrackedA;
+
+      // 2. Sắp xếp giờ bóng lăn từ Sớm -> Trễ theo giờ GMT+7
+      const timeA = a?.match_date ? new Date(a.match_date).getTime() : 0;
+      const timeB = b?.match_date ? new Date(b.match_date).getTime() : 0;
+      return timeA - timeB;
+    });
   }, [matches, trackedIds]);
 
   const toggleTrack = (matchId: string) => {
@@ -53,8 +67,11 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-900">
+    <div className="min-h-screen bg-[#1b202c] font-sans text-slate-100">
+      {/* Thanh Header chính */}
       <AppHeader />
+
+      {/* Nội dung chính của ứng dụng */}
       <main className="mx-auto max-w-4xl px-3 py-6 pb-28 sm:px-5">
         {activePhase === 'baseline' ? (
           <MatchBoard
@@ -67,7 +84,7 @@ function App() {
           />
         ) : (
           <PhasePlaceholderView
-            phase={PHASES[activePhase]}
+            phase={PHASES.find((p) => p.id === activePhase) || PHASES[0]}
             matches={orderedMatches}
             status={status}
             trackedIds={trackedIds}
@@ -76,8 +93,24 @@ function App() {
           />
         )}
       </main>
-      <BottomNav activePhase={activePhase} onSelect={setActivePhase} />
-      {h2hMatch && <H2HModal match={h2hMatch} onClose={() => setH2hMatch(null)} />}
+
+      {/* Thanh điều hướng Giai đoạn dưới đáy màn hình */}
+      <BottomNav
+        activePhase={activePhase}
+        onSelect={(phaseId) => setActivePhase(phaseId as PhaseId)}
+        onPhaseChange={(phaseId) => setActivePhase(phaseId as PhaseId)}
+      />
+
+      {/* Popup Modal hiển thị 5 trận H2H gần nhất kèm Giải đấu */}
+      {h2hMatch && (
+        <H2HModal
+          isOpen={!!h2hMatch}
+          onClose={() => setH2hMatch(null)}
+          homeTeam={h2hMatch.home_team}
+          awayTeam={h2hMatch.away_team}
+          h2hHistory={h2hMatch.h2h_history || []}
+        />
+      )}
     </div>
   );
 }
