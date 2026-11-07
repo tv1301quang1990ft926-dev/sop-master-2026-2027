@@ -1,7 +1,7 @@
 import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 
-export function AppHeader() {
+export default function AppHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#151923]/95 backdrop-blur">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
@@ -18,7 +18,7 @@ export function AppHeader() {
           </span>
         </div>
 
-        {/* Tiêu đề GĐ1 in nổi phía bên phải Header */}
+        {/* Tiêu đề GĐ1 in nổi bên phải Header */}
         <div className="text-xs font-black text-cyan-400 tracking-wider uppercase border border-cyan-500/50 bg-cyan-950/80 px-3 py-1 rounded-md shadow-[0_0_12px_rgba(34,211,238,0.4)]">
           GĐ1 - KÈO HÔM NAY
         </div>
@@ -26,5 +26,3 @@ export function AppHeader() {
     </header>
   );
 }
-
-export default AppHeader;
