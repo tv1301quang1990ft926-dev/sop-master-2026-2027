@@ -5,7 +5,7 @@ import H2HModal from '@/components/H2HModal';
 import MatchBoard from '@/components/MatchBoard';
 import PhasePlaceholderView from '@/components/PhasePlaceholderView';
 import { PHASES } from '@/constants/phases';
-import { fetchTodayMatches } from '@/services/matches';
+import { fetchTodayMatches } from '@/services/supabase';
 import type { BaselineMatch, LoadStatus, PhaseId } from '@/types';
 import { getVietnamDateKey } from '@/utils/dates';
 
