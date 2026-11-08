@@ -14,7 +14,6 @@ function App() {
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [trackedIds, setTrackedIds] = useState<Set<string>>(() => new Set());
   const [h2hMatch, setH2hMatch] = useState<BaselineMatch | null>(null);
-  const [selectedGmt, setSelectedGmt] = useState<number>(7);
 
   const loadMatches = useCallback(async () => {
     setStatus('loading');
@@ -68,7 +67,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#1b202c] font-sans text-slate-100">
-      <AppHeader selectedGmt={selectedGmt} onGmtChange={setSelectedGmt} />
+      <AppHeader />
 
       <main className="mx-auto max-w-4xl px-3 py-6 pb-28 sm:px-5">
         {activePhase === 'baseline' ? (
