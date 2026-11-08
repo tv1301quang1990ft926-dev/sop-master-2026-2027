@@ -7,7 +7,6 @@ import PhasePlaceholderView from '@/components/PhasePlaceholderView';
 import { PHASES } from '@/constants/phases';
 import { fetchTodayMatches } from '@/services/supabase';
 import type { BaselineMatch, LoadStatus, PhaseId } from '@/types';
-import { getVietnamDateKey } from '@/utils/dates';
 
 function App() {
   const [activePhase, setActivePhase] = useState<PhaseId>('baseline');
@@ -33,25 +32,25 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7)
+  // Sắp xếp danh sách trận đấu: Ẩn trận đã đá quá 3h, nạp đủ trận tối nay & rạng sáng 09/11
   const orderedMatches = useMemo(() => {
     if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
-    // Lấy ngày thi đấu mới nhất
-    const lastMatch = matches[matches.length - 1];
-    const latestDate = lastMatch?.match_date ? getVietnamDateKey(lastMatch.match_date) : null;
+    const now = Date.now();
 
-    const filtered = latestDate
-      ? matches.filter((match) => getVietnamDateKey(match.match_date) === latestDate)
-      : matches;
+    // 1. Ẩn các trận đã đá quá 3 tiếng, giữ các trận sắp đá
+    const upcoming = matches.filter((match) => {
+      if (!match.match_date) return true;
+      const matchTime = new Date(match.match_date).getTime();
+      return (now - matchTime) < 3 * 3600 * 1000;
+    });
 
-    return [...filtered].sort((a, b) => {
-      // 1. Ưu tiên trận được bấm ghim theo dõi
+    // 2. Sắp xếp từ Sớm -> Trễ theo giờ GMT+7
+    return [...upcoming].sort((a, b) => {
       const isTrackedA = trackedIds.has(a.match_id) ? 1 : 0;
       const isTrackedB = trackedIds.has(b.match_id) ? 1 : 0;
       if (isTrackedB !== isTrackedA) return isTrackedB - isTrackedA;
 
-      // 2. Sắp xếp giờ bóng lăn từ Sớm -> Trễ theo giờ GMT+7
       const timeA = a?.match_date ? new Date(a.match_date).getTime() : 0;
       const timeB = b?.match_date ? new Date(b.match_date).getTime() : 0;
       return timeA - timeB;
