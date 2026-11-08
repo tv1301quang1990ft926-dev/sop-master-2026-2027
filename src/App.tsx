@@ -7,7 +7,6 @@ import PhasePlaceholderView from '@/components/PhasePlaceholderView';
 import { PHASES } from '@/constants/phases';
 import { fetchTodayMatches } from '@/services/supabase';
 import type { BaselineMatch, LoadStatus, PhaseId } from '@/types';
-import { getVietnamDateKey } from '@/utils/dates';
 
 function App() {
   const [activePhase, setActivePhase] = useState<PhaseId>('baseline');
@@ -32,29 +31,11 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  // Sắp xếp danh sách trận đấu: AUTOMATIC HIDE FINISHED MATCHES & KEEP UPCOMING MATCHES (GMT+7)
+  // Sắp xếp toàn bộ danh sách trận đấu cào về (Bao gồm cả tối 08/11 và rạng sáng 09/11 từ Sớm -> Trễ)
   const orderedMatches = useMemo(() => {
     if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
-    const now = new Date().getTime();
-
-    // 1. TỰ ĐỘNG ẨN 100% TRẬN ĐÃ ĐÁ XONG (Đá quá 3 tiếng so với hiện tại)
-    const upcomingMatches = matches.filter((match) => {
-      const matchTime = match.match_date ? new Date(match.match_date).getTime() : 0;
-      if (matchTime === 0) return true;
-      const isFinished = now - matchTime > 3 * 3600 * 1000;
-      return !isFinished;
-    });
-
-    // 2. Lấy ngày thi đấu mới nhất của các trận chưa đá
-    const targetMatch = upcomingMatches[upcomingMatches.length - 1] || matches[matches.length - 1];
-    const latestDate = targetMatch?.match_date ? getVietnamDateKey(targetMatch.match_date) : null;
-
-    const filtered = latestDate
-      ? upcomingMatches.filter((match) => getVietnamDateKey(match.match_date) === latestDate)
-      : upcomingMatches;
-
-    return [...filtered].sort((a, b) => {
+    return [...matches].sort((a, b) => {
       // 1. Ưu tiên trận được bấm ghim theo dõi
       const isTrackedA = trackedIds.has(a.match_id) ? 1 : 0;
       const isTrackedB = trackedIds.has(b.match_id) ? 1 : 0;
