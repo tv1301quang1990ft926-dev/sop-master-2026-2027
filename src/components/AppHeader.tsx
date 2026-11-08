@@ -18,7 +18,7 @@ export function AppHeader() {
           </div>
         </div>
 
-        {/* BÊN PHẢI HEADER: ĐÃ XÓA BỎ CHỮ GĐ1 KÈO HÔM NAY */}
+        {/* THẺ PWA MOBILE BÊN PHẢI HEADER */}
         <div className="text-xs font-semibold text-slate-400 border border-slate-800 bg-slate-900/60 px-2.5 py-1 rounded-lg">
           PWA Mobile
         </div>
