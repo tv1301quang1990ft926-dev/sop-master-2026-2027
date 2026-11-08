@@ -31,17 +31,25 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  // Sắp xếp toàn bộ danh sách trận đấu cào về (Bao gồm cả tối 08/11 và rạng sáng 09/11 từ Sớm -> Trễ)
+  // Lọc chuẩn: Ẩn 100% trận cũ đã đá -> Lấy toàn bộ trận chưa đá (Tối 08/11 & Rạng sáng 09/11) từ Sớm -> Trễ
   const orderedMatches = useMemo(() => {
     if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
-    return [...matches].sort((a, b) => {
-      // 1. Ưu tiên trận được bấm ghim theo dõi
+    const now = Date.now();
+
+    // 1. LOẠI BỎ TRẬN ĐÃ ĐÁ (Loại các trận đã lăn bóng quá 3 tiếng)
+    const upcoming = matches.filter((m) => {
+      if (!m.match_date) return true;
+      const matchTime = new Date(m.match_date).getTime();
+      return (now - matchTime) < 3 * 3600 * 1000;
+    });
+
+    // 2. SẮP XẾP SỚM -> TRỄ (GMT+7)
+    return [...upcoming].sort((a, b) => {
       const isTrackedA = trackedIds.has(a.match_id) ? 1 : 0;
       const isTrackedB = trackedIds.has(b.match_id) ? 1 : 0;
       if (isTrackedB !== isTrackedA) return isTrackedB - isTrackedA;
 
-      // 2. Sắp xếp giờ bóng lăn từ Sớm -> Trễ theo giờ GMT+7
       const timeA = a?.match_date ? new Date(a.match_date).getTime() : 0;
       const timeB = b?.match_date ? new Date(b.match_date).getTime() : 0;
       return timeA - timeB;
@@ -59,10 +67,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#1b202c] font-sans text-slate-100">
-      {/* Thanh Header chính */}
       <AppHeader />
 
-      {/* Nội dung chính của ứng dụng */}
       <main className="mx-auto max-w-4xl px-3 py-6 pb-28 sm:px-5">
         {activePhase === 'baseline' ? (
           <MatchBoard
@@ -85,13 +91,11 @@ function App() {
         )}
       </main>
 
-      {/* Thanh điều hướng Giai đoạn dưới đáy màn hình */}
       <BottomNav
         activePhase={activePhase}
         onSelect={(phaseId) => setActivePhase(phaseId)}
       />
 
-      {/* Popup Modal hiển thị 5 trận H2H gần nhất kèm Giải đấu */}
       {h2hMatch && (
         <H2HModal
           isOpen={!!h2hMatch}
