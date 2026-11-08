@@ -32,17 +32,27 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7)
+  // Sắp xếp danh sách trận đấu: AUTOMATIC HIDE FINISHED MATCHES & KEEP UPCOMING MATCHES (GMT+7)
   const orderedMatches = useMemo(() => {
     if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
-    // Lấy ngày thi đấu mới nhất
-    const lastMatch = matches[matches.length - 1];
-    const latestDate = lastMatch?.match_date ? getVietnamDateKey(lastMatch.match_date) : null;
+    const now = new Date().getTime();
+
+    // 1. TỰ ĐỘNG ẨN 100% TRẬN ĐÃ ĐÁ XONG (Đá quá 3 tiếng so với hiện tại)
+    const upcomingMatches = matches.filter((match) => {
+      const matchTime = match.match_date ? new Date(match.match_date).getTime() : 0;
+      if (matchTime === 0) return true;
+      const isFinished = now - matchTime > 3 * 3600 * 1000;
+      return !isFinished;
+    });
+
+    // 2. Lấy ngày thi đấu mới nhất của các trận chưa đá
+    const targetMatch = upcomingMatches[upcomingMatches.length - 1] || matches[matches.length - 1];
+    const latestDate = targetMatch?.match_date ? getVietnamDateKey(targetMatch.match_date) : null;
 
     const filtered = latestDate
-      ? matches.filter((match) => getVietnamDateKey(match.match_date) === latestDate)
-      : matches;
+      ? upcomingMatches.filter((match) => getVietnamDateKey(match.match_date) === latestDate)
+      : upcomingMatches;
 
     return [...filtered].sort((a, b) => {
       // 1. Ưu tiên trận được bấm ghim theo dõi
