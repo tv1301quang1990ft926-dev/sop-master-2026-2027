@@ -18,12 +18,9 @@ export function AppHeader() {
           </div>
         </div>
 
-        {/* CHỮ GĐ1 - KÈO HÔM NAY IN ĐẬM NỔI BẬT PHÁT SÁNG BÊN PHẢI */}
-        <div className="flex items-center gap-2 rounded-xl bg-cyan-950 border-2 border-cyan-400 px-3.5 py-1.5 shadow-[0_0_16px_rgba(34,211,238,0.6)]">
-          <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse shadow-[0_0_8px_rgba(34,211,238,1)]"></span>
-          <span className="text-xs font-black tracking-wider text-cyan-300 uppercase drop-shadow-[0_0_8px_rgba(34,211,238,0.9)]">
-            GĐ1 - KÈO HÔM NAY
-          </span>
+        {/* BÊN PHẢI HEADER: ĐÃ XÓA BỎ CHỮ GĐ1 KÈO HÔM NAY */}
+        <div className="text-xs font-semibold text-slate-400 border border-slate-800 bg-slate-900/60 px-2.5 py-1 rounded-lg">
+          PWA Mobile
         </div>
       </div>
     </header>
