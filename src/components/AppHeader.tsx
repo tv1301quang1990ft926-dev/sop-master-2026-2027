@@ -1,35 +1,44 @@
 import React from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Globe } from 'lucide-react';
 
-export function AppHeader() {
+interface AppHeaderProps {
+  selectedTimezone?: number;
+  onTimezoneChange?: (tz: number) => void;
+}
+
+export function AppHeader({ selectedTimezone = 7, onTimezoneChange }: AppHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#151923]/95 backdrop-blur">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
-        {/* BÊN TRÁI: LOGO SOP MASTER & THẺ GĐ1 - KÈO HÔM NAY NỔI TRÊN NỀN NHƯ CHỮ SERIE A */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-950 border border-cyan-800 text-cyan-400">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-lg font-extrabold tracking-wider text-cyan-400">
-                SOP MASTER
-              </span>
-              <span className="text-[10px] font-medium text-slate-400">2026–2027 Season</span>
-            </div>
+        {/* BÊN TRÁI: LOGO SOP MASTER NGUYÊN BẢN */}
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-950 border border-cyan-800 text-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.2)]">
+            <ShieldCheck className="h-5 w-5" />
           </div>
-
-          {/* THẺ GĐ1 - KÈO HÔM NAY IN ĐẬM NỔI BẬT NỀN TƯƠNG PHẢN CAO (KHÔNG NEON/GLOW) */}
-          <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800 px-3 py-1">
-            <span className="h-2 w-2 rounded-full bg-cyan-400"></span>
-            <span className="text-xs font-black tracking-wider text-slate-100 uppercase">
-              GĐ1 - KÈO HÔM NAY
+          <div className="flex flex-col">
+            <span className="text-lg font-extrabold tracking-wider text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]">
+              SOP MASTER
             </span>
+            <span className="text-[10px] font-medium text-slate-400">2026–2027 Season</span>
           </div>
         </div>
 
-        {/* BÊN PHẢI: ĐÃ XÓA HOÀN TOÀN */}
-        <div></div>
+        {/* Ô SỐ 1 BÊN PHẢI: MENU THẢ XUỐNG CHỌN MÚI GIỜ (ĐÃ XÓA CHỮ Ô SỐ 2) */}
+        <div className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs text-slate-200 shadow-sm">
+          <Globe className="h-4 w-4 text-cyan-400" />
+          <select
+            value={selectedTimezone}
+            onChange={(e) => onTimezoneChange && onTimezoneChange(Number(e.target.value))}
+            className="bg-transparent font-bold text-cyan-300 focus:outline-none cursor-pointer text-xs"
+          >
+            <option value={7} className="bg-[#151923] text-slate-100">GMT+7 (Việt Nam)</option>
+            <option value={8} className="bg-[#151923] text-slate-100">GMT+8 (Singapore/Trung Quốc)</option>
+            <option value={9} className="bg-[#151923] text-slate-100">GMT+9 (Nhật Bản/Hàn Quốc)</option>
+            <option value={1} className="bg-[#151923] text-slate-100">GMT+1 (Anh/Châu Âu CET)</option>
+            <option value={2} className="bg-[#151923] text-slate-100">GMT+2 (Đông Âu EET)</option>
+            <option value={0} className="bg-[#151923] text-slate-100">GMT+0 (UTC)</option>
+          </select>
+        </div>
       </div>
     </header>
   );
