@@ -32,25 +32,17 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7 & CHỈ HIỆN TRẬN CHƯA ĐÁ)
+  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7)
   const orderedMatches = useMemo(() => {
     if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
-    const now = new Date().getTime();
-
-    // 1. Lấy ngày thi đấu mới nhất / hôm nay
+    // Lấy ngày thi đấu mới nhất
     const lastMatch = matches[matches.length - 1];
     const latestDate = lastMatch?.match_date ? getVietnamDateKey(lastMatch.match_date) : null;
 
-    // 2. BỔ SUNG: Chỉ giữ trận thuộc ngày hôm nay VÀ CHƯA ĐÁ (Đá quá 3 tiếng sẽ tự động ẩn)
-    const filtered = matches.filter((match) => {
-      const isSameDate = latestDate ? getVietnamDateKey(match.match_date) === latestDate : true;
-      if (!isSameDate) return false;
-
-      const matchTime = match.match_date ? new Date(match.match_date).getTime() : 0;
-      const isPast = matchTime > 0 && (now - matchTime > 3 * 3600 * 1000);
-      return !isPast; // Chỉ giữ lại các trận chưa đá hoặc mới đá
-    });
+    const filtered = latestDate
+      ? matches.filter((match) => getVietnamDateKey(match.match_date) === latestDate)
+      : matches;
 
     return [...filtered].sort((a, b) => {
       // 1. Ưu tiên trận được bấm ghim theo dõi
