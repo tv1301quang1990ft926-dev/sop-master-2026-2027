@@ -1,36 +1,29 @@
-const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
-
-export function getVietnamDateKey(iso: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: VIETNAM_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(iso));
+export function getVietnamDateKey(dateStr?: string): string {
+  if (!dateStr) return new Date().toISOString().split('T')[0];
+  try {
+    const d = new Date(dateStr);
+    // UTC+7 offset in ms = 7 * 3600 * 1000
+    const vnMs = d.getTime() + (7 * 3600 * 1000);
+    const vnDate = new Date(vnMs);
+    return vnDate.toISOString().split('T')[0];
+  } catch {
+    return new Date().toISOString().split('T')[0];
+  }
 }
 
-function formatDateTimeParts(iso: string, timeZone: string): Record<string, string> {
-  return Object.fromEntries(
-    new Intl.DateTimeFormat('en-GB', {
-      timeZone,
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(new Date(iso)).map(({ type, value }) => [type, value]),
-  );
-}
-
-export function formatKickoffDateTime(iso: string): string {
-  const parts = formatDateTimeParts(iso, VIETNAM_TIME_ZONE);
-  return `${parts.day}/${parts.month} - ${parts.hour}:${parts.minute}`;
-}
-
-export function formatHistoryDate(value: string): string {
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value;
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value;
-  const parts = formatDateTimeParts(iso, 'UTC');
-  return `${parts.day}/${parts.month}/${parts.year}`;
+export function formatGmtTime(dateStr: string | undefined, targetGmt: number = 7): string {
+  if (!dateStr) return '22:00';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const utcMs = d.getTime() + (d.getTimezoneOffset() * 60000);
+    const targetMs = utcMs + (targetGmt * 3600000);
+    const targetDate = new Date(targetMs);
+    const hours = String(targetDate.getHours()).padStart(2, '0');
+    const mins = String(targetDate.getMinutes()).padStart(2, '0');
+    const gmtSign = targetGmt >= 0 ? `+${targetGmt}` : `${targetGmt}`;
+    return `${hours}:${mins} (GMT${gmtSign})`;
+  } catch {
+    return dateStr;
+  }
 }
