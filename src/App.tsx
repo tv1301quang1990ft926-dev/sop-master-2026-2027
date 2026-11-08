@@ -7,6 +7,45 @@ import PhasePlaceholderView from '@/components/PhasePlaceholderView';
 import { PHASES } from '@/constants/phases';
 import { fetchTodayMatches } from '@/services/supabase';
 import type { BaselineMatch, LoadStatus, PhaseId } from '@/types';
+import { getVietnamDateKey } from '@/utils/dates';
+
+function adjustMatchForGmt(match: BaselineMatch, gmt: number): BaselineMatch {
+  if (!match) return match;
+
+  let formattedTime = match.match_date;
+  if (match.match_date) {
+    try {
+      const d = new Date(match.match_date);
+      if (!isNaN(d.getTime())) {
+        const utcMs = d.getTime();
+        const targetMs = utcMs + gmt * 3600000;
+        const targetD = new Date(targetMs);
+        const day = String(targetD.getUTCDate()).padStart(2, '0');
+        const month = String(targetD.getUTCMonth() + 1).padStart(2, '0');
+        const hours = String(targetD.getUTCHours()).padStart(2, '0');
+        const mins = String(targetD.getUTCMinutes()).padStart(2, '0');
+        const gmtLabel = gmt >= 0 ? `GMT+${gmt}` : `GMT${gmt}`;
+        formattedTime = `${day}/${month} - ${hours}:${mins} (${gmtLabel})`;
+      }
+    } catch {
+      // Fallback if parsing fails
+    }
+  }
+
+  const payload = match.baseline_payload
+    ? {
+        ...match.baseline_payload,
+        gio_thi_dau_gmt7: formattedTime,
+        time: formattedTime,
+        kickoff_time: formattedTime,
+      }
+    : undefined;
+
+  return {
+    ...match,
+    baseline_payload: payload,
+  };
+}
 
 function App() {
   const [activePhase, setActivePhase] = useState<PhaseId>('baseline');
@@ -14,6 +53,7 @@ function App() {
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [trackedIds, setTrackedIds] = useState<Set<string>>(() => new Set());
   const [h2hMatch, setH2hMatch] = useState<BaselineMatch | null>(null);
+  const [selectedGmt, setSelectedGmt] = useState<number>(7);
 
   const loadMatches = useCallback(async () => {
     setStatus('loading');
@@ -31,30 +71,32 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  // Lọc chuẩn: Ẩn 100% trận cũ đã đá -> Lấy toàn bộ trận chưa đá (Tối 08/11 & Rạng sáng 09/11) từ Sớm -> Trễ
+  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7) & Đổi múi giờ GMT động
   const orderedMatches = useMemo(() => {
     if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
-    const now = Date.now();
+    // Lấy ngày thi đấu mới nhất
+    const lastMatch = matches[matches.length - 1];
+    const latestDate = lastMatch?.match_date ? getVietnamDateKey(lastMatch.match_date) : null;
 
-    // 1. LOẠI BỎ TRẬN ĐÃ ĐÁ (Loại các trận đã lăn bóng quá 3 tiếng)
-    const upcoming = matches.filter((m) => {
-      if (!m.match_date) return true;
-      const matchTime = new Date(m.match_date).getTime();
-      return (now - matchTime) < 3 * 3600 * 1000;
-    });
+    const filtered = latestDate
+      ? matches.filter((match) => getVietnamDateKey(match.match_date) === latestDate)
+      : matches;
 
-    // 2. SẮP XẾP SỚM -> TRỄ (GMT+7)
-    return [...upcoming].sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
+      // 1. Ưu tiên trận được bấm ghim theo dõi
       const isTrackedA = trackedIds.has(a.match_id) ? 1 : 0;
       const isTrackedB = trackedIds.has(b.match_id) ? 1 : 0;
       if (isTrackedB !== isTrackedA) return isTrackedB - isTrackedA;
 
+      // 2. Sắp xếp giờ bóng lăn từ Sớm -> Trễ theo giờ GMT+7
       const timeA = a?.match_date ? new Date(a.match_date).getTime() : 0;
       const timeB = b?.match_date ? new Date(b.match_date).getTime() : 0;
       return timeA - timeB;
     });
-  }, [matches, trackedIds]);
+
+    return sorted.map((match) => adjustMatchForGmt(match, selectedGmt));
+  }, [matches, trackedIds, selectedGmt]);
 
   const toggleTrack = (matchId: string) => {
     setTrackedIds((current) => {
@@ -67,8 +109,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#1b202c] font-sans text-slate-100">
-      <AppHeader />
+      {/* Thanh Header chính kèm Dropdown chọn múi giờ GMT */}
+      <AppHeader selectedGmt={selectedGmt} onGmtChange={setSelectedGmt} />
 
+      {/* Nội dung chính của ứng dụng */}
       <main className="mx-auto max-w-4xl px-3 py-6 pb-28 sm:px-5">
         {activePhase === 'baseline' ? (
           <MatchBoard
@@ -91,11 +135,13 @@ function App() {
         )}
       </main>
 
+      {/* Thanh điều hướng Giai đoạn dưới đáy màn hình */}
       <BottomNav
         activePhase={activePhase}
         onSelect={(phaseId) => setActivePhase(phaseId)}
       />
 
+      {/* Popup Modal hiển thị 5 trận H2H gần nhất kèm Giải đấu */}
       {h2hMatch && (
         <H2HModal
           isOpen={!!h2hMatch}
