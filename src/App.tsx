@@ -9,44 +9,6 @@ import { fetchTodayMatches } from '@/services/supabase';
 import type { BaselineMatch, LoadStatus, PhaseId } from '@/types';
 import { getVietnamDateKey } from '@/utils/dates';
 
-function adjustMatchForGmt(match: BaselineMatch, gmt: number): BaselineMatch {
-  if (!match) return match;
-
-  let formattedTime = match.match_date;
-  if (match.match_date) {
-    try {
-      const d = new Date(match.match_date);
-      if (!isNaN(d.getTime())) {
-        const utcMs = d.getTime();
-        const targetMs = utcMs + gmt * 3600000;
-        const targetD = new Date(targetMs);
-        const day = String(targetD.getUTCDate()).padStart(2, '0');
-        const month = String(targetD.getUTCMonth() + 1).padStart(2, '0');
-        const hours = String(targetD.getUTCHours()).padStart(2, '0');
-        const mins = String(targetD.getUTCMinutes()).padStart(2, '0');
-        const gmtLabel = gmt >= 0 ? `GMT+${gmt}` : `GMT${gmt}`;
-        formattedTime = `${day}/${month} - ${hours}:${mins} (${gmtLabel})`;
-      }
-    } catch {
-      // Fallback if parsing fails
-    }
-  }
-
-  const payload = match.baseline_payload
-    ? {
-        ...match.baseline_payload,
-        gio_thi_dau_gmt7: formattedTime,
-        time: formattedTime,
-        kickoff_time: formattedTime,
-      }
-    : undefined;
-
-  return {
-    ...match,
-    baseline_payload: payload,
-  };
-}
-
 function App() {
   const [activePhase, setActivePhase] = useState<PhaseId>('baseline');
   const [matches, setMatches] = useState<BaselineMatch[]>([]);
@@ -71,7 +33,7 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7) & Đổi múi giờ GMT động
+  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7)
   const orderedMatches = useMemo(() => {
     if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
@@ -83,7 +45,7 @@ function App() {
       ? matches.filter((match) => getVietnamDateKey(match.match_date) === latestDate)
       : matches;
 
-    const sorted = [...filtered].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       // 1. Ưu tiên trận được bấm ghim theo dõi
       const isTrackedA = trackedIds.has(a.match_id) ? 1 : 0;
       const isTrackedB = trackedIds.has(b.match_id) ? 1 : 0;
@@ -94,9 +56,7 @@ function App() {
       const timeB = b?.match_date ? new Date(b.match_date).getTime() : 0;
       return timeA - timeB;
     });
-
-    return sorted.map((match) => adjustMatchForGmt(match, selectedGmt));
-  }, [matches, trackedIds, selectedGmt]);
+  }, [matches, trackedIds]);
 
   const toggleTrack = (matchId: string) => {
     setTrackedIds((current) => {
@@ -109,7 +69,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#1b202c] font-sans text-slate-100">
-      {/* Thanh Header chính kèm Dropdown chọn múi giờ GMT */}
+      {/* Thanh Header chính */}
       <AppHeader selectedGmt={selectedGmt} onGmtChange={setSelectedGmt} />
 
       {/* Nội dung chính của ứng dụng */}
