@@ -1,24 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ShieldCheck, Globe } from 'lucide-react';
 
 interface AppHeaderProps {
-  selectedGmt?: number;
-  onGmtChange?: (gmt: number) => void;
+  selectedGmt: number;
+  onGmtChange: (gmt: number) => void;
 }
 
-export function AppHeader({ selectedGmt: propGmt, onGmtChange }: AppHeaderProps) {
-  const [internalGmt, setInternalGmt] = useState<number>(7);
-  
-  const currentGmt = propGmt !== undefined ? propGmt : internalGmt;
-
-  const handleGmtChange = (val: number) => {
-    if (onGmtChange) {
-      onGmtChange(val);
-    } else {
-      setInternalGmt(val);
-    }
-  };
-
+export function AppHeader({ selectedGmt, onGmtChange }: AppHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#151923]/95 backdrop-blur">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
@@ -35,7 +23,7 @@ export function AppHeader({ selectedGmt: propGmt, onGmtChange }: AppHeaderProps)
           </div>
         </div>
 
-        {/* Ô KHOANH SỐ 1: DROPDOWN GMT MẶC ĐỊNH GMT+7 */}
+        {/* DROPDOWN GMT MẶC ĐỊNH GMT+7 */}
         <div className="flex items-center gap-2">
           <span className="hidden sm:inline-block text-xs font-semibold text-cyan-400 bg-cyan-950/80 border border-cyan-700/50 px-2.5 py-1 rounded-full shadow">
             GĐ1 • KÈO HÔM NAY
@@ -43,8 +31,8 @@ export function AppHeader({ selectedGmt: propGmt, onGmtChange }: AppHeaderProps)
           <div className="flex items-center gap-1.5 bg-slate-900 border border-cyan-500/40 px-2 py-1 rounded-lg shadow-sm">
             <Globe className="h-3.5 w-3.5 text-cyan-400" />
             <select
-              value={currentGmt}
-              onChange={(e) => handleGmtChange(Number(e.target.value))}
+              value={selectedGmt}
+              onChange={(e) => onGmtChange(Number(e.target.value))}
               className="bg-transparent text-cyan-300 text-xs font-bold focus:outline-none cursor-pointer"
             >
               <option value={7} className="bg-slate-900 text-slate-100">Viet Nam (GMT+7)</option>
