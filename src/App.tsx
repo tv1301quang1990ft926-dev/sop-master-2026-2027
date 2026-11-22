@@ -9,31 +9,12 @@ import { fetchTodayMatches } from '@/services/supabase';
 import type { BaselineMatch, LoadStatus, PhaseId } from '@/types';
 import { getVietnamDateKey } from '@/utils/dates';
 
-// Hàm chuyển đổi timestamp an toàn, chống lỗi Invalid Date / NaN
-function getSafeTimestamp(dateStr?: string | null): number {
-  if (!dateStr) return 0;
-  const parsed = new Date(dateStr).getTime();
-  if (!isNaN(parsed)) return parsed;
-
-  // Xử lý chuỗi định dạng cào thô: "DD/MM - HH:mm" (Ví dụ: "08/11 - 18:30")
-  const match = dateStr.match(/(\d{1,2})\/(\d{1,2})\s*-\s*(\d{1,2}):(\d{1,2})/);
-  if (match) {
-    const [, day, month, hour, minute] = match.map(Number);
-    const currentYear = new Date().getFullYear();
-    return new Date(currentYear, month - 1, day, hour, minute).getTime();
-  }
-  return 0;
-}
-
 function App() {
   const [activePhase, setActivePhase] = useState<PhaseId>('baseline');
   const [matches, setMatches] = useState<BaselineMatch[]>([]);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [trackedIds, setTrackedIds] = useState<Set<string>>(() => new Set());
   const [h2hMatch, setH2hMatch] = useState<BaselineMatch | null>(null);
-
-  // State quản lý Múi giờ (Mặc định GMT+7)
-  const [selectedTimezone, setSelectedTimezone] = useState<number>(7);
 
   const loadMatches = useCallback(async () => {
     setStatus('loading');
@@ -51,16 +32,12 @@ function App() {
     loadMatches();
   }, [loadMatches]);
 
-  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ)
+  // Sắp xếp danh sách trận đấu chuẩn Rule 4 (T-24h Baseline: Sớm -> Trễ GMT+7)
   const orderedMatches = useMemo(() => {
     if (!matches || !Array.isArray(matches) || matches.length === 0) return [];
 
-    // 1. Xác định ngày thi đấu chuẩn bằng cách sắp xếp timestamp
-    const sortedByDate = [...matches].sort(
-      (a, b) => getSafeTimestamp(a.match_date) - getSafeTimestamp(b.match_date)
-    );
-
-    const lastMatch = sortedByDate[sortedByDate.length - 1];
+    // Lấy ngày thi đấu mới nhất
+    const lastMatch = matches[matches.length - 1];
     const latestDate = lastMatch?.match_date ? getVietnamDateKey(lastMatch.match_date) : null;
 
     const filtered = latestDate
@@ -68,14 +45,14 @@ function App() {
       : matches;
 
     return [...filtered].sort((a, b) => {
-      // Ưu tiên trận được bấm ghim theo dõi
+      // 1. Ưu tiên trận được bấm ghim theo dõi
       const isTrackedA = trackedIds.has(a.match_id) ? 1 : 0;
       const isTrackedB = trackedIds.has(b.match_id) ? 1 : 0;
       if (isTrackedB !== isTrackedA) return isTrackedB - isTrackedA;
 
-      // Sắp xếp giờ bóng lăn từ Sớm -> Trễ theo timestamp an toàn
-      const timeA = getSafeTimestamp(a?.match_date);
-      const timeB = getSafeTimestamp(b?.match_date);
+      // 2. Sắp xếp giờ bóng lăn từ Sớm -> Trễ theo giờ GMT+7
+      const timeA = a?.match_date ? new Date(a.match_date).getTime() : 0;
+      const timeB = b?.match_date ? new Date(b.match_date).getTime() : 0;
       return timeA - timeB;
     });
   }, [matches, trackedIds]);
@@ -92,10 +69,7 @@ function App() {
   return (
     <div className="min-h-screen bg-[#1b202c] font-sans text-slate-100">
       {/* Thanh Header chính */}
-      <AppHeader
-        selectedTimezone={selectedTimezone}
-        onTimezoneChange={setSelectedTimezone}
-      />
+      <AppHeader />
 
       {/* Nội dung chính của ứng dụng */}
       <main className="mx-auto max-w-4xl px-3 py-6 pb-28 sm:px-5">
@@ -107,7 +81,6 @@ function App() {
             trackedIds={trackedIds}
             onToggleTrack={toggleTrack}
             onOpenH2H={setH2hMatch}
-            selectedTimezone={selectedTimezone}
           />
         ) : (
           <PhasePlaceholderView
@@ -117,7 +90,6 @@ function App() {
             trackedIds={trackedIds}
             onToggleTrack={toggleTrack}
             onOpenH2H={setH2hMatch}
-            selectedTimezone={selectedTimezone}
           />
         )}
       </main>
