@@ -82,26 +82,3 @@ export function normalizeMatchData(row: RawMatchRow): BaselineMatch {
     baseline_payload: baselinePayload,
   };
 }
-
-export async function fetchTodayMatches(): Promise<BaselineMatch[]> {
-  try {
-    const { data, error } = await supabase
-      .from('sop_master_baseline_scans')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Lỗi fetchTodayMatches:', error);
-      return [];
-    }
-
-    if (!data || !Array.isArray(data)) {
-      return [];
-    }
-
-    return data.map((row) => normalizeMatchData(row as RawMatchRow));
-  } catch (err) {
-    console.error('Lỗi fetchTodayMatches:', err);
-    return [];
-  }
-}
